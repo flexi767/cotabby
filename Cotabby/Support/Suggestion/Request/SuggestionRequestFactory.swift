@@ -34,7 +34,8 @@ enum SuggestionRequestFactory {
         settings: SuggestionSettingsSnapshot,
         configuration: SuggestionConfiguration,
         clipboardContext: String? = nil,
-        visualContextSummary: String? = nil
+        visualContextSummary: String? = nil,
+        keyboardLanguageCode: String? = nil
     ) -> SuggestionRequestBuildResult {
         let prefixText = truncatedPromptPrefix(
             from: context.precedingText,
@@ -56,8 +57,13 @@ enum SuggestionRequestFactory {
         let trimmedExtendedContext = settings.extendedContext
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let activeExtendedContext = trimmedExtendedContext.isEmpty ? nil : trimmedExtendedContext
+        // Resolved once so the prompt hint and the token budget can never disagree about the language.
+        let activeLanguages = LanguageCatalog.activeLanguages(
+            declared: settings.responseLanguages,
+            keyboardLanguageCode: keyboardLanguageCode
+        )
         // nil when the user declared no languages — the renderers then just match the surrounding text.
-        let languageInstruction = LanguageCatalog.promptInstruction(for: settings.responseLanguages)
+        let languageInstruction = LanguageCatalog.promptInstruction(for: activeLanguages)
         let boundedClipboardContext = activeClipboardContext(
             rawContext: clipboardContext,
             settings: settings,
@@ -107,7 +113,7 @@ enum SuggestionRequestFactory {
             maxPredictionTokens: activeMaxPredictionTokens(
                 configuration: configuration,
                 wordRange: settings.effectiveWordRange,
-                responseLanguages: settings.responseLanguages,
+                responseLanguages: activeLanguages,
                 isMultiLineEnabled: settings.isMultiLineEnabled
             ),
             temperature: configuration.temperature,

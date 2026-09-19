@@ -162,6 +162,7 @@ extension SuggestionCoordinator {
         let settings = settingsSnapshot
         let configuration = configuration
         let suggestionEngine = suggestionEngine
+        let keyboardLanguageCode = keyboardLanguageCodeProvider()
         Task { @MainActor [weak self] in
             // If the coordinator has been torn down (app shutdown), skip prewarm entirely.
             // Using `guard let self` instead of the optional chain prevents prewarm from
@@ -175,7 +176,8 @@ extension SuggestionCoordinator {
             let request = SuggestionRequestFactory.buildRequest(
                 context: prewarmContext,
                 settings: settings,
-                configuration: configuration
+                configuration: configuration,
+                keyboardLanguageCode: keyboardLanguageCode
             ).request
             await suggestionEngine.prewarm(for: request)
         }

@@ -39,7 +39,7 @@ enum LanguageCatalog {
 
     /// Soft default applied on a clean install: pre-select English so the length budget has a
     /// language to anchor on out of the box. Users with a different primary language clear English
-    /// and pick their own; multi-language users fall back to the English factor by design.
+    /// and pick their own; multi-language users are narrowed per request by `activeLanguages`.
     static let defaultLanguages: [String] = ["English"]
 
     /// Tokens-per-word fallback when the user has no language selected, multiple languages selected,
@@ -61,6 +61,7 @@ enum LanguageCatalog {
         LanguageOption(code: "pt", name: "Portuguese", nativeLabel: "Português (Portuguese)", tokensPerWord: 1.5),
         LanguageOption(code: "nl", name: "Dutch", nativeLabel: "Nederlands (Dutch)", tokensPerWord: 1.6),
         LanguageOption(code: "ru", name: "Russian", nativeLabel: "Русский (Russian)", tokensPerWord: 2.0),
+        LanguageOption(code: "bg", name: "Bulgarian", nativeLabel: "Български (Bulgarian)", tokensPerWord: 2.0),
         LanguageOption(
             code: "zh-Hans",
             name: "Simplified Chinese",
@@ -87,6 +88,40 @@ enum LanguageCatalog {
             return fallbackTokensPerWord
         }
         return option.tokensPerWord
+    }
+
+    /// Narrows a multi-language declaration to the one language the active keyboard layout is for.
+    /// People who write across languages switch layouts to switch languages, so the layout is a
+    /// per-keystroke signal the declared set lacks; without it, `effectiveTokensPerWord` can only fall
+    /// back to the English factor and truncates German/Cyrillic completions. Only the layout's
+    /// primary language is used, because macOS attaches a long tail of secondary languages to every
+    /// Latin/Cyrillic layout that would false-match. Returns the declared set unchanged when there is
+    /// at most one language, no keyboard language, or no declared catalog language matches it.
+    static func activeLanguages(declared languages: [String], keyboardLanguageCode: String?) -> [String] {
+        let normalized = normalize(languages)
+        guard normalized.count > 1, let keyboardLanguageCode else {
+            return normalized
+        }
+        let keyboardBase = baseLanguageSubtag(keyboardLanguageCode)
+        guard !keyboardBase.isEmpty else {
+            return normalized
+        }
+
+        let match = normalized.first { name in
+            guard let option = commonLanguages.first(where: {
+                $0.name.caseInsensitiveCompare(name) == .orderedSame
+            }) else {
+                return false
+            }
+            return baseLanguageSubtag(option.code) == keyboardBase
+        }
+        return match.map { [$0] } ?? normalized
+    }
+
+    /// "bg-BG" / "zh_Hans" / "DE" -> "bg" / "zh" / "de".
+    static func baseLanguageSubtag(_ code: String) -> String {
+        let base = code.split(whereSeparator: { $0 == "-" || $0 == "_" }).first ?? ""
+        return base.lowercased()
     }
 
     /// Trims, drops empties, truncates over-long entries, de-duplicates case-insensitively (keeping

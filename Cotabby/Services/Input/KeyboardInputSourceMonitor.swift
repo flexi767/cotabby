@@ -22,6 +22,12 @@ final class KeyboardInputSourceMonitor {
     /// notification first) current.
     private(set) var isComposingIMEActive = false
 
+    /// Primary language of the active layout ("de" for German, "bg" for Bulgarian - Phonetic, "en"
+    /// for ABC), or nil when the source reports none. Only the first entry of
+    /// `kTISPropertyInputSourceLanguages` is kept: it is the layout's own language, while the rest is
+    /// a long generic tail. Feeds `LanguageCatalog.activeLanguages` on every request build.
+    private(set) var primaryLanguageCode: String?
+
     private var observer: NSObjectProtocol?
 
     init() {
@@ -54,19 +60,25 @@ final class KeyboardInputSourceMonitor {
 
     private func handleInputSourceChanged() {
         let wasComposing = isComposingIMEActive
+        let previousLanguage = primaryLanguageCode
         refresh()
         if wasComposing != isComposingIMEActive {
             CotabbyLogger.app.info("Composing IME active changed to \(self.isComposingIMEActive)")
         }
+        if previousLanguage != primaryLanguageCode {
+            CotabbyLogger.app.info("Keyboard language changed to \(self.primaryLanguageCode ?? "none")")
+        }
     }
 
-    /// Reads the current keyboard input source via TIS and recomputes `isComposingIMEActive`.
+    /// Reads the current keyboard input source via TIS and recomputes the cached values.
     private func refresh() {
         guard let unmanagedSource = TISCopyCurrentKeyboardInputSource() else {
             isComposingIMEActive = false
+            primaryLanguageCode = nil
             return
         }
         let source = unmanagedSource.takeRetainedValue()
+        primaryLanguageCode = Self.primaryLanguage(source)
 
         let isKeyboardLayout = Self.stringProperty(source, kTISPropertyInputSourceType)
             == (kTISTypeKeyboardLayout as String)
@@ -85,5 +97,15 @@ final class KeyboardInputSourceMonitor {
             return nil
         }
         return Unmanaged<CFString>.fromOpaque(pointer).takeUnretainedValue() as String
+    }
+
+    /// First entry of the CFArray-valued `kTISPropertyInputSourceLanguages`. Same non-owning pointer
+    /// contract as `stringProperty`; a conditional cast keeps a malformed array from trapping.
+    private static func primaryLanguage(_ source: TISInputSource) -> String? {
+        guard let pointer = TISGetInputSourceProperty(source, kTISPropertyInputSourceLanguages) else {
+            return nil
+        }
+        let languages = Unmanaged<CFArray>.fromOpaque(pointer).takeUnretainedValue() as? [String]
+        return languages?.first
     }
 }

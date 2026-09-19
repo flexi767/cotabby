@@ -175,6 +175,36 @@ final class SuggestionRequestFactoryTests: XCTestCase {
         XCTAssertEqual(result.promptPreview, result.request.prompt)
     }
 
+    func test_buildRequest_keyboardLanguageDrivesHintAndTokenBudgetTogether() {
+        let context = CotabbyTestFixtures.focusedInputContext(precedingText: "Здравей, как")
+        let settings = CotabbyTestFixtures.settingsSnapshot(
+            selectedWordCountPreset: .twoToFour,
+            responseLanguages: ["English", "German", "Bulgarian"]
+        )
+
+        let bulgarian = SuggestionRequestFactory.buildRequest(
+            context: context,
+            settings: settings,
+            configuration: .standard,
+            keyboardLanguageCode: "bg"
+        ).request
+        // 4 (highWords) * 2.0 (Bulgarian) = 8.
+        XCTAssertEqual(bulgarian.maxPredictionTokens, 8)
+        XCTAssertEqual(bulgarian.languageInstruction, LanguageCatalog.promptInstruction(for: ["Bulgarian"]))
+
+        let noKeyboard = SuggestionRequestFactory.buildRequest(
+            context: context,
+            settings: settings,
+            configuration: .standard
+        ).request
+        // Unnarrowed trilingual set keeps the old English fallback: ceil(4 * 1.3) = 6.
+        XCTAssertEqual(noKeyboard.maxPredictionTokens, 6)
+        XCTAssertEqual(
+            noKeyboard.languageInstruction,
+            LanguageCatalog.promptInstruction(for: ["English", "German", "Bulgarian"])
+        )
+    }
+
     func test_buildRequest_carriesProfileAndVisualContextSummary() {
         let context = CotabbyTestFixtures.focusedInputContext(precedingText: "Hello")
 

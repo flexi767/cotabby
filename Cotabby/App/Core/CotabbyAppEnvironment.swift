@@ -319,6 +319,9 @@ final class CotabbyAppEnvironment {
         suggestionCoordinator.emojiInputObserver = { [weak inlineCommandCoordinator] event in
             inlineCommandCoordinator?.observe(event) ?? false
         }
+        suggestionCoordinator.keyboardLanguageCodeProvider = { [weak keyboardInputSourceMonitor] in
+            keyboardInputSourceMonitor?.primaryLanguageCode
+        }
 
         self.permissionManager = permissionManager
         self.runtimeModel = runtimeModel

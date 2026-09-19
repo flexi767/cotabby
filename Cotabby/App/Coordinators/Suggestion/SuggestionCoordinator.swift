@@ -62,6 +62,11 @@ final class SuggestionCoordinator: ObservableObject {
     /// consumption happens through `InputMonitor.emojiCaptureKeyDecider`.
     var emojiInputObserver: ((CapturedInputEvent) -> Bool)?
 
+    /// Primary language of the active keyboard layout, read at each request build so a writer who
+    /// switches layouts to switch languages gets that language's prompt hint and token budget.
+    /// Installed by `CotabbyAppEnvironment`; the default keeps tests and previews layout-agnostic.
+    var keyboardLanguageCodeProvider: () -> String? = { nil }
+
     static let totalTabAcceptedWordCountDefaultsKey = "cotabbyTotalAcceptedWordCount"
 
     // Combine subscriptions are the coordinator's remaining direct mutable bookkeeping.

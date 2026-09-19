@@ -54,6 +54,42 @@ final class LanguageSupportTests: XCTestCase {
         XCTAssertTrue(hint?.contains("German, English, or Spanish") == true)
     }
 
+    // MARK: - keyboard-layout narrowing
+
+    private let trilingual = ["English", "German", "Bulgarian"]
+
+    /// The primary codes macOS reports for the ABC, German, and Bulgarian - Phonetic layouts.
+    func test_activeLanguages_keyboardPicksTheMatchingDeclaredLanguage() {
+        XCTAssertEqual(LanguageCatalog.activeLanguages(declared: trilingual, keyboardLanguageCode: "en"), ["English"])
+        XCTAssertEqual(LanguageCatalog.activeLanguages(declared: trilingual, keyboardLanguageCode: "de"), ["German"])
+        XCTAssertEqual(LanguageCatalog.activeLanguages(declared: trilingual, keyboardLanguageCode: "bg"), ["Bulgarian"])
+    }
+
+    func test_activeLanguages_matchesRegionAndScriptVariantsOnBaseSubtag() {
+        XCTAssertEqual(LanguageCatalog.activeLanguages(declared: trilingual, keyboardLanguageCode: "bg-BG"), ["Bulgarian"])
+        XCTAssertEqual(LanguageCatalog.activeLanguages(declared: trilingual, keyboardLanguageCode: "de_DE"), ["German"])
+        XCTAssertEqual(LanguageCatalog.activeLanguages(declared: trilingual, keyboardLanguageCode: "EN"), ["English"])
+    }
+
+    func test_activeLanguages_keepsDeclaredSetWhenKeyboardCannotNarrowIt() {
+        XCTAssertEqual(LanguageCatalog.activeLanguages(declared: trilingual, keyboardLanguageCode: nil), trilingual)
+        XCTAssertEqual(LanguageCatalog.activeLanguages(declared: trilingual, keyboardLanguageCode: ""), trilingual)
+        XCTAssertEqual(LanguageCatalog.activeLanguages(declared: trilingual, keyboardLanguageCode: "fr"), trilingual)
+        // A single declared language is the user's explicit choice; the layout never overrides it.
+        XCTAssertEqual(LanguageCatalog.activeLanguages(declared: ["German"], keyboardLanguageCode: "bg"), ["German"])
+        // Free-text languages have no code, so they can never be selected by a layout.
+        XCTAssertEqual(
+            LanguageCatalog.activeLanguages(declared: ["English", "Klingon"], keyboardLanguageCode: "tlh"),
+            ["English", "Klingon"]
+        )
+    }
+
+    func test_activeLanguages_narrowedBulgarianGetsCyrillicTokenFactor() {
+        let active = LanguageCatalog.activeLanguages(declared: trilingual, keyboardLanguageCode: "bg")
+        XCTAssertEqual(LanguageCatalog.effectiveTokensPerWord(for: active), 2.0)
+        XCTAssertEqual(LanguageCatalog.effectiveTokensPerWord(for: trilingual), LanguageCatalog.fallbackTokensPerWord)
+    }
+
     // MARK: - migration
 
     func test_migration_knownNonEnglishCodeBecomesThatLanguage() {

@@ -119,7 +119,8 @@ extension SuggestionCoordinator {
             settings: settingsSnapshot,
             configuration: configuration,
             clipboardContext: clipboardContext,
-            visualContextSummary: visualContextSummary
+            visualContextSummary: visualContextSummary,
+            keyboardLanguageCode: keyboardLanguageCodeProvider()
         )
         latestGenerationNumber = context.generation
         let request = requestBuildResult.request
@@ -235,7 +236,8 @@ extension SuggestionCoordinator {
             settings: settingsSnapshot,
             configuration: configuration,
             clipboardContext: clipboardContext,
-            visualContextSummary: visualContextSummary
+            visualContextSummary: visualContextSummary,
+            keyboardLanguageCode: keyboardLanguageCodeProvider()
         )
         latestGenerationNumber = context.generation
         let request = requestBuildResult.request
