@@ -222,11 +222,12 @@ final class ScreenshotContextGenerator {
     /// Applies the final prompt-injection budget after OCR cleanup.
     ///
     /// `maxRecognizedCharacters` bounds OCR cleanup input. This separate cap protects the
-    /// autocomplete prompt from a verbose recognized-text result.
+    /// autocomplete prompt from a verbose recognized-text result, keeping the lines nearest the
+    /// focused field (see `OCRTextHygiene.clean`).
     private func boundedSummaryText(_ text: String) -> String {
-        PromptContextSanitizer.sanitize(
-            text,
-            maxCharacters: configuration.maxSummaryCharacters
+        OCRTextHygiene.boundedKeepingEnd(
+            PromptContextSanitizer.sanitize(text),
+            maxChars: configuration.maxSummaryCharacters
         )
     }
 

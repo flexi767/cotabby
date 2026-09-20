@@ -225,7 +225,9 @@ nonisolated enum OCRTextHygiene {
     ///
     /// The surviving lines are trimmed, empties dropped, then bounded to at most `maxLines`
     /// (default `40`) and `maxChars` (default `2000`) so a pathological screen cannot flood the
-    /// prompt. The character bound is applied to the final joined string.
+    /// prompt. Bounding keeps the END: lines arrive top-to-bottom and the capture band ends at the
+    /// top of the focused field, so the last lines are the ones nearest the user's input (the
+    /// message being replied to, the label of the field) and the most relevant to keep.
     static func clean(
         lines: [OCRLine],
         fieldText: String,
@@ -242,10 +244,33 @@ nonisolated enum OCRTextHygiene {
         let cleanedLines = filtered
             .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-            .prefix(max(0, maxLines))
+            .suffix(max(0, maxLines))
 
-        let joined = cleanedLines.joined(separator: "\n")
-        return String(joined.prefix(max(0, maxChars)))
+        return boundedKeepingEnd(cleanedLines.joined(separator: "\n"), maxChars: maxChars)
+    }
+
+    /// Caps multi-line text to `maxChars` by keeping whole lines from the END (the lines nearest the
+    /// focused field), so the kept text never opens with a torn fragment of a farther line. When the
+    /// nearest line alone exceeds the cap, its start is kept instead, because a sentence cut from
+    /// the front is harder for the model to read than one cut at the back.
+    static func boundedKeepingEnd(_ text: String, maxChars: Int) -> String {
+        let limit = max(0, maxChars)
+        guard text.count > limit else { return text }
+
+        let lines = text.split(separator: "\n")
+        var kept: [Substring] = []
+        var used = 0
+        for line in lines.reversed() {
+            let cost = line.count + (kept.isEmpty ? 0 : 1)
+            guard used + cost <= limit else { break }
+            kept.append(line)
+            used += cost
+        }
+
+        guard !kept.isEmpty else {
+            return String((lines.last ?? Substring(text)).prefix(limit))
+        }
+        return kept.reversed().joined(separator: "\n")
     }
 
     // MARK: - Tokenization

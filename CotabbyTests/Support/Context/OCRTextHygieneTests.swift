@@ -209,6 +209,28 @@ final class OCRTextHygieneTests: XCTestCase {
         XCTAssertEqual(result.components(separatedBy: "\n").count, 5)
     }
 
+    /// Lines arrive top-to-bottom and the capture band ends at the field, so the bottom lines are the
+    /// nearest context (e.g. the message being replied to) and must be the ones that survive.
+    func test_clean_boundingKeepsTheLinesNearestTheField() {
+        let input = (0..<60).map { line("line number \($0) has words") }
+
+        let byLines = OCRTextHygiene.clean(lines: input, fieldText: "", maxLines: 3)
+        XCTAssertEqual(byLines, "line number 57 has words\nline number 58 has words\nline number 59 has words")
+
+        let byChars = OCRTextHygiene.clean(lines: input, fieldText: "", maxChars: 60)
+        XCTAssertEqual(byChars, "line number 58 has words\nline number 59 has words")
+    }
+
+    func test_boundedKeepingEnd_cutsOnLineBoundariesAndKeepsAnOverlongNearestLineReadable() {
+        XCTAssertEqual(OCRTextHygiene.boundedKeepingEnd("far\nnear", maxChars: 100), "far\nnear")
+        XCTAssertEqual(OCRTextHygiene.boundedKeepingEnd("far away line\nnearest", maxChars: 10), "nearest")
+        XCTAssertEqual(
+            OCRTextHygiene.boundedKeepingEnd("far\nthe nearest line is long", maxChars: 11),
+            "the nearest"
+        )
+        XCTAssertEqual(OCRTextHygiene.boundedKeepingEnd("anything", maxChars: 0), "")
+    }
+
     func test_clean_boundsMaxChars() {
         let input = [line(String(repeating: "abcde ", count: 200))]
         let result = OCRTextHygiene.clean(lines: input, fieldText: "", maxChars: 50)

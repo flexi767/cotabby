@@ -94,6 +94,23 @@ final class BaseCompletionPromptRendererTests: XCTestCase {
         XCTAssertTrue(withContext.hasSuffix("Status:"))
     }
 
+    func test_longScreenContextKeepsTheLinesNearestTheFieldAndItsLabel() {
+        let farLines = (0..<30).map { "older chat message number \($0) about something else" }
+        let screen = (farLines + ["Maria can you send the report today"]).joined(separator: "\n")
+
+        let prompt = BaseCompletionPromptRenderer.prompt(
+            prefixText: "Sure, I will",
+            applicationName: "Slack",
+            userName: nil,
+            visualContextSummary: screen
+        )
+
+        XCTAssertTrue(prompt.contains("Nearby on screen: "))
+        XCTAssertTrue(prompt.contains("Maria can you send the report today"))
+        XCTAssertFalse(prompt.contains("message number 0 "))
+        XCTAssertTrue(prompt.hasSuffix("Sure, I will"))
+    }
+
     func test_surfaceContextLeadsThePrefaceAndPrefixStaysLast() {
         let surface = SurfaceContext(
             surfaceClass: .email,

@@ -68,7 +68,12 @@ enum BaseCompletionPromptRenderer {
             sections.append(Self.contextSection("clipboard", "On the clipboard: \(clip)", priority: 35, maxChars: 400))
         }
         if let screen = Self.nonEmpty(visualContextSummary) {
-            sections.append(Self.contextSection("screen", "Nearby on screen: \(screen)", priority: 30, maxChars: 500))
+            // The OCR runs top-to-bottom toward the field, so its LAST lines are the ones nearest the
+            // caret; trim from the far end (at a line boundary) before labeling, so the cap drops
+            // distant text rather than the line being replied to, and the label always survives.
+            let label = "Nearby on screen: "
+            let nearest = OCRTextHygiene.boundedKeepingEnd(screen, maxChars: Self.screenSectionMaxChars - label.count)
+            sections.append(Self.contextSection("screen", label + nearest, priority: 30, maxChars: Self.screenSectionMaxChars))
         }
         // The caret prefix: top priority so it is never starved, kept by its END (the text nearest
         // the caret), and rendered last with no label so the model continues from where the user
@@ -118,6 +123,8 @@ enum BaseCompletionPromptRenderer {
     ) -> PromptSection {
         PromptSection(name: name, content: content, priority: priority, minChars: 0, maxChars: maxChars, truncation: .preserveStart)
     }
+
+    private static let screenSectionMaxChars = 500
 
     /// "Written by <name>." or nil. Conditions the voice via authorship framing.
     private static func personaLine(_ userName: String?) -> String? {
