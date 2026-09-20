@@ -135,7 +135,7 @@ struct SuggestionConfiguration: Equatable, Sendable {
         debounceMilliseconds: 20,
         // Low temperature keeps inline completions stable and less likely to drift.
         temperature: 0.1,
-        topK: 20,
+        topK: 1,
         topP: 0.7,
         minP: 0.08,
         repetitionPenalty: 1.05,

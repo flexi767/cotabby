@@ -2704,5 +2704,340 @@
     "first"
    ]
   }
+ },
+ {
+  "id": "email-de-follow-01",
+  "tags": [
+   "email",
+   "de"
+  ],
+  "applicationName": "Mail",
+  "bundleIdentifier": "com.apple.mail",
+  "precedingText": "Hallo Frau Weber,\n\nvielen Dank für das Gespräch von gestern. Ich schicke Ihnen ",
+  "expectation": {
+   "kind": "positive",
+   "acceptable": [
+    "die überarbeiteten Unterlagen",
+    "die Unterlagen",
+    "das Angebot",
+    "die Präsentation",
+    "den Vertrag",
+    "die Notizen",
+    "die Zusammenfassung",
+    "die Details",
+    "das Protokoll"
+   ]
+  }
+ },
+ {
+  "id": "email-de-termin-02",
+  "tags": [
+   "email",
+   "de"
+  ],
+  "applicationName": "Mail",
+  "bundleIdentifier": "com.apple.mail",
+  "precedingText": "Guten Morgen Herr Schmidt,\n\nkönnen wir den Termin auf ",
+  "expectation": {
+   "kind": "positive",
+   "acceptable": [
+    "nächste Woche verschieben",
+    "Donnerstag verschieben",
+    "Freitag verschieben",
+    "kommende Woche verschieben",
+    "morgen verschieben",
+    "Montag verschieben",
+    "einen späteren Zeitpunkt verschieben"
+   ]
+  }
+ },
+ {
+  "id": "email-de-danke-03",
+  "tags": [
+   "email",
+   "de"
+  ],
+  "applicationName": "Mail",
+  "bundleIdentifier": "com.apple.mail",
+  "precedingText": "Sehr geehrte Damen und Herren,\n\nvielen Dank für Ihre schnelle ",
+  "expectation": {
+   "kind": "positive",
+   "acceptable": [
+    "Rückmeldung",
+    "Antwort",
+    "Bearbeitung",
+    "Reaktion",
+    "Hilfe",
+    "Unterstützung"
+   ]
+  }
+ },
+ {
+  "id": "chat-de-status-04",
+  "tags": [
+   "chat",
+   "de"
+  ],
+  "applicationName": "Slack",
+  "bundleIdentifier": "com.tinyspeck.slackmacgap",
+  "precedingText": "Kurzes Update: der Build läuft wieder, ich habe ",
+  "expectation": {
+   "kind": "positive",
+   "acceptable": [
+    "den Fehler behoben",
+    "das Problem behoben",
+    "die Änderungen gepusht",
+    "den Bug gefixt",
+    "es repariert",
+    "die Konfiguration angepasst",
+    "den Cache geleert"
+   ]
+  }
+ },
+ {
+  "id": "chat-de-frage-05",
+  "tags": [
+   "chat",
+   "de"
+  ],
+  "applicationName": "Slack",
+  "bundleIdentifier": "com.tinyspeck.slackmacgap",
+  "precedingText": "Hast du kurz Zeit? Ich hätte eine ",
+  "expectation": {
+   "kind": "positive",
+   "acceptable": [
+    "Frage",
+    "kurze Frage",
+    "Bitte",
+    "Rückfrage"
+   ]
+  }
+ },
+ {
+  "id": "prose-de-notiz-06",
+  "tags": [
+   "prose",
+   "de"
+  ],
+  "applicationName": "Notes",
+  "bundleIdentifier": "com.apple.Notes",
+  "precedingText": "Für das nächste Meeting sollten wir die offenen Punkte ",
+  "expectation": {
+   "kind": "positive",
+   "acceptable": [
+    "noch einmal durchgehen",
+    "zusammenfassen",
+    "besprechen",
+    "klären",
+    "priorisieren",
+    "sammeln",
+    "durchsprechen"
+   ]
+  }
+ },
+ {
+  "id": "prose-de-bericht-07",
+  "tags": [
+   "prose",
+   "de"
+  ],
+  "applicationName": "Pages",
+  "bundleIdentifier": "com.apple.iWork.Pages",
+  "precedingText": "Die Ergebnisse des Quartals zeigen, dass die Umsätze ",
+  "expectation": {
+   "kind": "positive",
+   "acceptable": [
+    "gestiegen sind",
+    "deutlich gestiegen sind",
+    "gesunken sind",
+    "stabil geblieben sind",
+    "zugenommen haben",
+    "leicht gestiegen sind",
+    "weiter wachsen"
+   ]
+  }
+ },
+ {
+  "id": "email-de-gruss-08",
+  "tags": [
+   "email",
+   "de"
+  ],
+  "applicationName": "Mail",
+  "bundleIdentifier": "com.apple.mail",
+  "precedingText": "Bei Fragen melden Sie sich gerne jederzeit.\n\nMit freundlichen ",
+  "expectation": {
+   "kind": "positive",
+   "acceptable": [
+    "Grüßen",
+    "Grüßen Vassil",
+    "Grüssen"
+   ]
+  }
+ },
+ {
+  "id": "email-bg-follow-09",
+  "tags": [
+   "email",
+   "bg"
+  ],
+  "applicationName": "Mail",
+  "bundleIdentifier": "com.apple.mail",
+  "precedingText": "Здравейте, госпожо Петрова,\n\nблагодаря за срещата вчера. Ще Ви изпратя ",
+  "expectation": {
+   "kind": "positive",
+   "acceptable": [
+    "документите",
+    "обновените документи",
+    "офертата",
+    "презентацията",
+    "договора",
+    "бележките",
+    "резюмето",
+    "информацията",
+    "файловете"
+   ]
+  }
+ },
+ {
+  "id": "chat-bg-utre-10",
+  "tags": [
+   "chat",
+   "bg"
+  ],
+  "applicationName": "Slack",
+  "bundleIdentifier": "com.tinyspeck.slackmacgap",
+  "precedingText": "Здравей, ще се видим ли ",
+  "expectation": {
+   "kind": "positive",
+   "acceptable": [
+    "утре",
+    "утре следобед",
+    "днес следобед",
+    "в офиса",
+    "утре сутрин",
+    "по-късно",
+    "другата седмица"
+   ]
+  }
+ },
+ {
+  "id": "chat-bg-blagodarya-11",
+  "tags": [
+   "chat",
+   "bg"
+  ],
+  "applicationName": "Slack",
+  "bundleIdentifier": "com.tinyspeck.slackmacgap",
+  "precedingText": "Благодаря за бързия ",
+  "expectation": {
+   "kind": "positive",
+   "acceptable": [
+    "отговор",
+    "отговор!",
+    "ти отговор"
+   ]
+  }
+ },
+ {
+  "id": "chat-bg-status-12",
+  "tags": [
+   "chat",
+   "bg"
+  ],
+  "applicationName": "Slack",
+  "bundleIdentifier": "com.tinyspeck.slackmacgap",
+  "precedingText": "Кратко обновление: билдът минава, вече ",
+  "expectation": {
+   "kind": "positive",
+   "acceptable": [
+    "поправих грешката",
+    "оправих проблема",
+    "качих промените",
+    "работи",
+    "е готово",
+    "пуснах промените"
+   ]
+  }
+ },
+ {
+  "id": "prose-bg-notes-13",
+  "tags": [
+   "prose",
+   "bg"
+  ],
+  "applicationName": "Notes",
+  "bundleIdentifier": "com.apple.Notes",
+  "precedingText": "За следващата среща трябва да ",
+  "expectation": {
+   "kind": "positive",
+   "acceptable": [
+    "обсъдим отворените въпроси",
+    "прегледим точките",
+    "подготвим презентацията",
+    "обобщим резултатите",
+    "изясним детайлите",
+    "съберем идеите"
+   ]
+  }
+ },
+ {
+  "id": "email-bg-molba-14",
+  "tags": [
+   "email",
+   "bg"
+  ],
+  "applicationName": "Mail",
+  "bundleIdentifier": "com.apple.mail",
+  "precedingText": "Здравейте,\n\nбих искал да Ви помоля за ",
+  "expectation": {
+   "kind": "positive",
+   "acceptable": [
+    "съдействие",
+    "помощ",
+    "информация",
+    "обратна връзка",
+    "среща",
+    "потвърждение"
+   ]
+  }
+ },
+ {
+  "id": "email-bg-pozdrav-15",
+  "tags": [
+   "email",
+   "bg"
+  ],
+  "applicationName": "Mail",
+  "bundleIdentifier": "com.apple.mail",
+  "precedingText": "При въпроси, моля, не се колебайте да се свържете с мен.\n\nС уважение",
+  "expectation": {
+   "kind": "positive",
+   "acceptable": [
+    ",\nВасил",
+    "\nВасил",
+    ", Васил"
+   ]
+  }
+ },
+ {
+  "id": "prose-bg-dokumenti-16",
+  "tags": [
+   "prose",
+   "bg"
+  ],
+  "applicationName": "Pages",
+  "bundleIdentifier": "com.apple.iWork.Pages",
+  "precedingText": "Изпратих ти документите по имейла, погледни ги когато ",
+  "expectation": {
+   "kind": "positive",
+   "acceptable": [
+    "имаш време",
+    "можеш",
+    "ти е удобно",
+    "си свободен",
+    "имаш възможност"
+   ]
+  }
  }
 ]
