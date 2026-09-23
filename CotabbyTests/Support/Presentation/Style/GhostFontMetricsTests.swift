@@ -155,15 +155,42 @@ final class GhostFontMetricsTests: XCTestCase {
 
     func testSizeMultiplierRespectsAbsoluteFloor() {
         // A degenerate multiplier far below the shipped range cannot push ghost text under the
-        // legibility floor: 14 * 0.5 = 7, clamped up to absoluteMinimumPointSize.
+        // legibility floor: 14 * 0.2 = 2.8, clamped up to absoluteMinimumPointSize.
         let size = GhostFontMetrics.pointSize(
             caretHeight: 5,
             fieldMetrics: nil,
             fallbackRatio: fallbackRatio,
             minimum: minimum,
             maximum: maximum,
-            sizeMultiplier: 0.5
+            sizeMultiplier: 0.2
         )
         XCTAssertEqual(size, GhostFontMetrics.absoluteMinimumPointSize, accuracy: 0.0001)
+    }
+
+    func testSmallestShippedMultiplierStillShrinksAndIsNotClampedByTheFloor() {
+        // The smallest knob setting must actually take effect, including on a field that auto-sizes
+        // onto the 14 pt floor: 14 * 0.5 = 7, exactly the legibility floor rather than clamped by it.
+        // This is the invariant that lets the shrink end of the slider be widened safely.
+        let onTheFloor = GhostFontMetrics.pointSize(
+            caretHeight: 5,
+            fieldMetrics: nil,
+            fallbackRatio: fallbackRatio,
+            minimum: minimum,
+            maximum: maximum,
+            sizeMultiplier: CGFloat(SuggestionSettingsStore.minimumGhostTextSizeMultiplier)
+        )
+        XCTAssertEqual(onTheFloor, minimum * 0.5, accuracy: 0.0001)
+        XCTAssertGreaterThanOrEqual(onTheFloor, GhostFontMetrics.absoluteMinimumPointSize)
+
+        // A normal field shrinks proportionally, well clear of the floor: 15.6 * 0.5 = 7.8.
+        let ordinaryField = GhostFontMetrics.pointSize(
+            caretHeight: 20,
+            fieldMetrics: nil,
+            fallbackRatio: fallbackRatio,
+            minimum: minimum,
+            maximum: maximum,
+            sizeMultiplier: CGFloat(SuggestionSettingsStore.minimumGhostTextSizeMultiplier)
+        )
+        XCTAssertEqual(ordinaryField, 15.6 * 0.5, accuracy: 0.0001)
     }
 }

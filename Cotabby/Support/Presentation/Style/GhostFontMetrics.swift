@@ -16,7 +16,7 @@ enum GhostFontMetrics {
     /// read as broken rather than small. It sits under `minimum` on purpose so a "smaller" multiplier
     /// still shrinks text that auto-sized to the floor; within the shipped multiplier range it never
     /// binds, so it is purely a backstop against degenerate inputs (a non-positive or tiny multiplier).
-    static let absoluteMinimumPointSize: CGFloat = 9
+    static let absoluteMinimumPointSize: CGFloat = 7
 
     /// Glyph-box metrics of the host field's font. `ascender - descender` is the full glyph box
     /// height (`NSFont.descender` is negative). The derived ratio is scale-invariant, so callers may

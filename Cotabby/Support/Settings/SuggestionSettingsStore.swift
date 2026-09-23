@@ -39,10 +39,12 @@ struct SuggestionSettingsStore {
     static let ghostTextOpacityStep: Double = 0.1
 
     /// Multiplier the overlay applies on top of the caret-approximated ghost-text size. 1.0 is the
-    /// out-of-box default (the unchanged best-approximation). The band is symmetric around 1.0 with
-    /// real shrink room because "suggestions look too big" is the common complaint, and is kept
-    /// narrow on both ends so neither extreme renders ghost text illegibly small or comically large.
-    static let minimumGhostTextSizeMultiplier: Double = 0.7
+    /// out-of-box default (the unchanged best-approximation). The band is deliberately lopsided:
+    /// "suggestions look too big" is the common complaint, so the shrink end reaches half size while
+    /// the growth end stays narrow. 0.5 lands exactly on `GhostFontMetrics.absoluteMinimumPointSize`
+    /// for a field that auto-sizes to the 14 pt floor, so the legibility backstop still never binds
+    /// inside this range.
+    static let minimumGhostTextSizeMultiplier: Double = 0.5
     static let maximumGhostTextSizeMultiplier: Double = 1.3
     static let defaultGhostTextSizeMultiplier: Double = 1.0
     static let ghostTextSizeMultiplierStep: Double = 0.1

@@ -379,6 +379,36 @@ final class SuggestionTextNormalizerTests: XCTestCase {
         XCTAssertEqual(result.text, "")
         XCTAssertEqual(result.suppression, .normalizedToEmpty)
     }
+
+    // MARK: - Period-only suppression
+
+    func test_normalizeDetailed_suppressesACompletionThatIsOnlyAPeriod() {
+        let request = CotabbyTestFixtures.suggestionRequest(
+            prefixText: "See you tomorrow",
+            precedingText: "See you tomorrow"
+        )
+
+        for raw in [".", " .", ". ", "...", "\u{2026}"] {
+            let result = SuggestionTextNormalizer.normalizeDetailed(raw, for: request)
+            XCTAssertEqual(result.text, "", "expected \(raw) to be suppressed")
+            XCTAssertEqual(result.suppression, .periodOnly, "expected \(raw) to be attributed")
+        }
+    }
+
+    func test_normalizeDetailed_keepsCompletionsThatMerelyContainAPeriod() {
+        let request = CotabbyTestFixtures.suggestionRequest(
+            prefixText: "Send it to me at noon",
+            precedingText: "Send it to me at noon"
+        )
+
+        // A period carrying any other character is real text the writer has not typed yet, and other
+        // punctuation-only completions (a closing bracket, a question mark) keep their old behavior.
+        for raw in [" tomorrow.", ".5", "com.", ")", "?"] {
+            let result = SuggestionTextNormalizer.normalizeDetailed(raw, for: request)
+            XCTAssertEqual(result.text, raw, "expected \(raw) to survive")
+            XCTAssertNil(result.suppression)
+        }
+    }
 }
 
 /// Most normalization tests care about the public insertion text rather than suppression

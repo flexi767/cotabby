@@ -29,6 +29,9 @@ enum CompletionSuppressionReason: String, Sendable, Equatable {
     /// Attributed by the engine (the runtime reports it on `LlamaGenerationOutput`), not by the
     /// normalizer, which never sees the withheld text.
     case lowConfidence
+    /// The completion was nothing but a period or an ellipsis. A one-character "." ghost is never
+    /// worth a keystroke: the writer types their own sentence-ending punctuation.
+    case periodOnly
 }
 
 /// Outcome of normalizing one raw completion: the ghost text, plus the attributable reason when that
@@ -141,6 +144,15 @@ enum SuggestionTextNormalizer {
             normalized = String(normalized.drop(while: { $0.isWhitespace }))
         }
 
+        // A period is the one completion this fork refuses on principle: "." (or an ellipsis) as the
+        // whole suggestion asks the writer to press a key to save a single character they were about
+        // to type anyway, and it flickers in front of the caret at every sentence end. Other
+        // punctuation-only completions still pass, because closing a bracket or a quote does carry
+        // information; `InsertionSafetyGate` deliberately stays out of this judgment.
+        if isPeriodOnly(normalized) {
+            return SuggestionNormalizationResult(text: "", suppression: .periodOnly)
+        }
+
         // Final safety gate: never surface control characters, replacement glyphs, or
         // whitespace-only output as ghost text. Returning empty makes the coordinator treat this
         // as "no suggestion" and regenerate rather than insert junk on Tab.
@@ -177,6 +189,21 @@ enum SuggestionTextNormalizer {
         // Nothing printable survived: either the model emitted only whitespace, or everything it
         // produced was control markers / reasoning / scaffolding that normalization stripped away.
         return rawHadContent ? .normalizedToEmpty : .emptyGeneration
+    }
+
+    /// True when the completion's only printable content is periods (".", "...") or an ellipsis,
+    /// ignoring surrounding whitespace. Any other character makes it a real completion: ".5" and
+    /// "com." both carry text the writer has not typed yet.
+    private static func isPeriodOnly(_ text: String) -> Bool {
+        var sawPeriod = false
+        for character in text {
+            if character == "." || character == "\u{2026}" {
+                sawPeriod = true
+                continue
+            }
+            guard character.isWhitespace else { return false }
+        }
+        return sawPeriod
     }
 
     /// Removes `<think>…</think>` reasoning blocks: complete blocks first, then any dangling open
