@@ -104,7 +104,8 @@ final class LlamaSuggestionEvalTests: XCTestCase {
         let request = SuggestionRequestFactory.buildRequest(
             context: context,
             settings: settings,
-            configuration: .standard
+            configuration: .standard,
+            visualContextSummary: evalCase.screenText.map(Self.screenExcerpt)
         ).request
 
         let start = Date()
@@ -141,6 +142,23 @@ final class LlamaSuggestionEvalTests: XCTestCase {
             outcome: LlamaEvalScorer.outcome(shownText: shownText, for: evalCase),
             suppressionStage: suppressionStage,
             latencySeconds: latency
+        )
+    }
+
+    /// Puts a case's raw screen text through the same two passes the live pipeline applies before
+    /// a summary ever reaches the request factory (`ScreenshotContextGenerator`): the strict OCR
+    /// noise filter, then the nearest-lines character bound. Without this the eval would measure a
+    /// cleaner excerpt than the app can actually produce, and every sanitizer change would look
+    /// like a no-op here.
+    private static func screenExcerpt(_ rawScreenText: String) -> String {
+        let configuration = VisualContextConfiguration.default
+        let filtered = PromptContextSanitizer.sanitizeOCR(
+            rawScreenText,
+            maxCharacters: configuration.maxRecognizedCharacters
+        )
+        return OCRTextHygiene.boundedKeepingEnd(
+            PromptContextSanitizer.sanitize(filtered),
+            maxChars: configuration.maxSummaryCharacters
         )
     }
 

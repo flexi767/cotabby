@@ -3039,5 +3039,340 @@
     "имаш възможност"
    ]
   }
+ },
+ {
+  "id": "screen-reply-subject-01",
+  "tags": [
+   "screen",
+   "chat",
+   "en"
+  ],
+  "applicationName": "Slack",
+  "bundleIdentifier": "com.tinyspeck.slackmacgap",
+  "precedingText": "Sure, I will send the ",
+  "trailingText": "",
+  "screenText": "Maria Kovacheva  10:42\nCan you send me the Q3 budget review before Thursday?",
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "Q3 budget review",
+    "budget review",
+    "Q3 budget"
+   ]
+  }
+ },
+ {
+  "id": "screen-reply-deadline-02",
+  "tags": [
+   "screen",
+   "chat",
+   "en"
+  ],
+  "applicationName": "Slack",
+  "bundleIdentifier": "com.tinyspeck.slackmacgap",
+  "precedingText": "I can have it ready by ",
+  "trailingText": "",
+  "screenText": "Maria Kovacheva  10:42\nCan you send me the Q3 budget review before Thursday?",
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "Thursday",
+    "Thursday morning",
+    "Thursday afternoon"
+   ]
+  }
+ },
+ {
+  "id": "screen-reply-name-03",
+  "tags": [
+   "screen",
+   "chat",
+   "en"
+  ],
+  "applicationName": "Slack",
+  "bundleIdentifier": "com.tinyspeck.slackmacgap",
+  "precedingText": "Thanks for the reminder, ",
+  "trailingText": "",
+  "screenText": "Maria Kovacheva  10:42\nCan you send me the Q3 budget review before Thursday?",
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "Maria"
+   ]
+  }
+ },
+ {
+  "id": "screen-email-invoice-04",
+  "tags": [
+   "screen",
+   "email",
+   "en"
+  ],
+  "applicationName": "Mail",
+  "bundleIdentifier": "com.apple.mail",
+  "precedingText": "Hi,\n\nThank you for the reminder about invoice ",
+  "trailingText": "",
+  "screenText": "From: accounts@vendor.com\nSubject: Invoice 4412 is overdue\nOur records show invoice 4412 has not been paid yet.",
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "4412"
+   ]
+  }
+ },
+ {
+  "id": "screen-email-overdue-05",
+  "tags": [
+   "screen",
+   "email",
+   "en"
+  ],
+  "applicationName": "Mail",
+  "bundleIdentifier": "com.apple.mail",
+  "precedingText": "I have checked our records and invoice 4412 ",
+  "trailingText": "",
+  "screenText": "From: accounts@vendor.com\nSubject: Invoice 4412 is overdue\nOur records show invoice 4412 has not been paid yet.",
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "has not been paid",
+    "is overdue",
+    "was not paid"
+   ]
+  }
+ },
+ {
+  "id": "screen-message-place-06",
+  "tags": [
+   "screen",
+   "chat",
+   "en"
+  ],
+  "applicationName": "Messages",
+  "bundleIdentifier": "com.apple.MobileSMS",
+  "precedingText": "Yes, see you at ",
+  "trailingText": "",
+  "screenText": "Nikolay Petrov\nAre we still on for lunch at Sofia Center tomorrow?",
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "Sofia Center",
+    "Sofia Center tomorrow"
+   ]
+  }
+ },
+ {
+  "id": "screen-message-name-07",
+  "tags": [
+   "screen",
+   "chat",
+   "en"
+  ],
+  "applicationName": "Messages",
+  "bundleIdentifier": "com.apple.MobileSMS",
+  "precedingText": "Hi ",
+  "trailingText": "",
+  "screenText": "Nikolay Petrov\nAre we still on for lunch at Sofia Center tomorrow?",
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "Nikolay"
+   ]
+  }
+ },
+ {
+  "id": "screen-code-symbol-08",
+  "tags": [
+   "screen",
+   "code",
+   "en"
+  ],
+  "applicationName": "Visual Studio Code",
+  "bundleIdentifier": "com.microsoft.VSCode",
+  "precedingText": "I think we should rename ",
+  "trailingText": "",
+  "screenText": "func resolveGhostFontSize(forCaretHeight:caretQuality:fieldFont:)\n    return GhostFontMetrics.pointSize(",
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "resolveGhostFontSize"
+   ]
+  }
+ },
+ {
+  "id": "screen-ticket-09",
+  "tags": [
+   "screen",
+   "chat",
+   "en"
+  ],
+  "applicationName": "Slack",
+  "bundleIdentifier": "com.tinyspeck.slackmacgap",
+  "precedingText": "I am taking a look at ",
+  "trailingText": "",
+  "screenText": "#deployments\nPetya: SCR-482 the importer drops mobile.bg listings after the retry",
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "SCR-482"
+   ]
+  }
+ },
+ {
+  "id": "screen-listing-price-10",
+  "tags": [
+   "screen",
+   "web",
+   "en"
+  ],
+  "applicationName": "Safari",
+  "bundleIdentifier": "com.apple.Safari",
+  "precedingText": "The car in the listing costs ",
+  "trailingText": "",
+  "screenText": "BMW 320d Touring 2019\n178 000 km\n24 900 EUR\nSofia",
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "24 900",
+    "24900"
+   ]
+  }
+ },
+ {
+  "id": "screen-de-offer-11",
+  "tags": [
+   "screen",
+   "email",
+   "de"
+  ],
+  "applicationName": "Mail",
+  "bundleIdentifier": "com.apple.mail",
+  "precedingText": "Sehr geehrter Herr Weber,\n\ngerne schicke ich Ihnen das ",
+  "trailingText": "",
+  "screenText": "Von: Herr Weber\nBetreff: Angebot fur die Lagerhalle\nkonnen Sie mir das Angebot fur die Lagerhalle bis Freitag schicken?",
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "Angebot",
+    "Angebot fur die Lagerhalle"
+   ]
+  }
+ },
+ {
+  "id": "screen-de-deadline-12",
+  "tags": [
+   "screen",
+   "email",
+   "de"
+  ],
+  "applicationName": "Mail",
+  "bundleIdentifier": "com.apple.mail",
+  "precedingText": "Ich schicke es Ihnen bis ",
+  "trailingText": "",
+  "screenText": "Von: Herr Weber\nBetreff: Angebot fur die Lagerhalle\nkonnen Sie mir das Angebot fur die Lagerhalle bis Freitag schicken?",
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "Freitag"
+   ]
+  }
+ },
+ {
+  "id": "screen-bg-offer-13",
+  "tags": [
+   "screen",
+   "chat",
+   "bg"
+  ],
+  "applicationName": "Messages",
+  "bundleIdentifier": "com.apple.MobileSMS",
+  "precedingText": "Да, ще изпратя ",
+  "trailingText": "",
+  "screenText": "Иван Георгиев\nМожеш ли да изпратиш офертата днес?",
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "офертата",
+    "офертата днес"
+   ]
+  }
+ },
+ {
+  "id": "screen-nearest-line-14",
+  "tags": [
+   "screen",
+   "chat",
+   "en"
+  ],
+  "applicationName": "Slack",
+  "bundleIdentifier": "com.tinyspeck.slackmacgap",
+  "precedingText": "Sure, I will review the ",
+  "trailingText": "",
+  "screenText": "Petya: the printer in the Vienna office is jammed again (0)\nPetya: the printer in the Vienna office is jammed again (1)\nPetya: the printer in the Vienna office is jammed again (2)\nPetya: the printer in the Vienna office is jammed again (3)\nPetya: the printer in the Vienna office is jammed again (4)\nPetya: the printer in the Vienna office is jammed again (5)\nPetya: the printer in the Vienna office is jammed again (6)\nPetya: the printer in the Vienna office is jammed again (7)\nPetya: the printer in the Vienna office is jammed again (8)\nPetya: the printer in the Vienna office is jammed again (9)\nPetya: the printer in the Vienna office is jammed again (10)\nPetya: the printer in the Vienna office is jammed again (11)\nPetya: the printer in the Vienna office is jammed again (12)\nPetya: the printer in the Vienna office is jammed again (13)\nPetya: the printer in the Vienna office is jammed again (14)\nPetya: the printer in the Vienna office is jammed again (15)\nPetya: the printer in the Vienna office is jammed again (16)\nPetya: the printer in the Vienna office is jammed again (17)\nPetya: can you review the landing page copy today?",
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "landing page copy",
+    "landing page"
+   ]
+  }
+ },
+ {
+  "id": "screen-standup-15",
+  "tags": [
+   "screen",
+   "chat",
+   "en"
+  ],
+  "applicationName": "Slack",
+  "bundleIdentifier": "com.tinyspeck.slackmacgap",
+  "precedingText": "Got it, standup at ",
+  "trailingText": "",
+  "screenText": "Alex: standup is moved to 09:30 tomorrow, same link",
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "09:30",
+    "9:30",
+    "9 30"
+   ]
+  }
+ },
+ {
+  "id": "screen-chrome-noise-16",
+  "tags": [
+   "screen",
+   "forbidden",
+   "en"
+  ],
+  "applicationName": "TextEdit",
+  "bundleIdentifier": "com.apple.TextEdit",
+  "precedingText": "Please send me the ",
+  "trailingText": "",
+  "screenText": "File  Edit  View  Window  Help\nUntitled 3 — TextEdit\nHelvetica  12  Regular",
+  "expectation": {
+   "kind": "forbidden",
+   "forbidden": [
+    "untitled",
+    "textedit",
+    "helvetica",
+    "file edit"
+   ]
+  }
  }
 ]

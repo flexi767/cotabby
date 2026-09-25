@@ -63,30 +63,41 @@ final class PromptContextSanitizerTests: XCTestCase {
 
     // MARK: - sanitizeOCR
 
-    func test_sanitizeOCR_dropsStandaloneNumbers() {
-        let input = "hello 50 world 424"
-        let result = PromptContextSanitizer.sanitizeOCR(input)
-        XCTAssertFalse(result.contains("50"))
-        XCTAssertFalse(result.contains("424"))
-        XCTAssertTrue(result.contains("hello"))
-        XCTAssertTrue(result.contains("world"))
+    func test_sanitizeOCR_keepsNumbersInALineThatCarriesWords() {
+        // Numbers are the most quotable thing on a screen — a price, a time, an invoice number,
+        // a quarter — and a reply is usually built around them. They used to be deleted as
+        // "numeric UI chrome", which left the model with a sentence full of holes.
+        XCTAssertEqual(PromptContextSanitizer.sanitizeOCR("hello 50 world 424"), "hello 50 world 424")
+        XCTAssertEqual(
+            PromptContextSanitizer.sanitizeOCR("Invoice 4412 is overdue"),
+            "Invoice 4412 is overdue"
+        )
+        XCTAssertEqual(
+            PromptContextSanitizer.sanitizeOCR("Can you send the Q3 budget review"),
+            "Can you send the Q3 budget review"
+        )
     }
 
-    func test_sanitizeOCR_dropsShortNoiseTokensButKeepsPreservedWords() {
-        // "I" and "if" are in the preserved set; "x" is not
-        let input = "I like if x"
-        let result = PromptContextSanitizer.sanitizeOCR(input)
-        XCTAssertTrue(result.contains("I"))
-        XCTAssertTrue(result.contains("if"))
-        XCTAssertTrue(result.contains("like"))
-        XCTAssertFalse(result.contains(" x"))
+    func test_sanitizeOCR_keepsShortTokensInsideAQualifyingLine() {
+        // Short tokens ride along with the line that earned its place. Removing the ones that are
+        // not on the preserved list punched holes in ordinary sentences for no gain.
+        XCTAssertEqual(PromptContextSanitizer.sanitizeOCR("I like if x"), "I like if x")
     }
 
-    func test_sanitizeOCR_dropsLineWhenMajorityTokensAreNoise() {
-        // 3 of 4 tokens are noise (>50%): "50", "x", "99" — only "hello" survives
-        let input = "50 x 99 hello"
-        let result = PromptContextSanitizer.sanitizeOCR(input)
-        XCTAssertEqual(result, "")
+    func test_sanitizeOCR_keepsANumericLineThatCarriesOneRealWord() {
+        // "50 x 99 hello" is a dimension next to a word, not chrome: one signal token is enough to
+        // keep the line, and what it keeps includes the measurements.
+        XCTAssertEqual(PromptContextSanitizer.sanitizeOCR("50 x 99 hello"), "50 x 99 hello")
+    }
+
+    func test_sanitizeOCR_keepsPricesAndAcronymsThatCarryNoVowel() {
+        // "BMW", "EUR" and "320d" have no vowel and no known word, so each alone looked like OCR
+        // junk; together they are a car listing, which is exactly what a reply would quote.
+        XCTAssertEqual(
+            PromptContextSanitizer.sanitizeOCR("BMW 320d Touring 2019"),
+            "BMW 320d Touring 2019"
+        )
+        XCTAssertEqual(PromptContextSanitizer.sanitizeOCR("24 900 EUR"), "24 900 EUR")
     }
 
     func test_sanitizeOCR_keepsLineWhenHalfOrMoreTokensSurvive() {
@@ -175,8 +186,8 @@ final class PromptContextSanitizerTests: XCTestCase {
     }
 
     func test_sanitizeOCR_dropsLineOfOnlyWeakShortWords() {
-        // Preserved short words survive token scoring but are never strong signal on their own, so
-        // a line made entirely of them is UI chrome ("we", "go", "to") and must be dropped whole.
+        // One and two letter tokens never count as evidence that a line is real, so a line made
+        // entirely of them is UI chrome ("we", "go", "to") and is dropped whole.
         XCTAssertEqual(PromptContextSanitizer.sanitizeOCR("we go to it"), "")
     }
 
@@ -192,10 +203,10 @@ final class PromptContextSanitizerTests: XCTestCase {
         XCTAssertEqual(PromptContextSanitizer.sanitizeOCR(""), "")
     }
 
-    func test_sanitizeOCR_dropsLetterlessDottedToken() {
-        // "12.34" splits like a domain but carries no letters, is not all-digits (the dot), and has
-        // no word signal, so it scores as numeric UI chrome and is dropped.
-        XCTAssertEqual(PromptContextSanitizer.sanitizeOCR("meeting notes 12.34"), "meeting notes")
+    func test_sanitizeOCR_keepsLetterlessDottedToken() {
+        // "12.34" carries no letters and no word signal, but in a line of real words it is a price
+        // or a version, and the line is what decides.
+        XCTAssertEqual(PromptContextSanitizer.sanitizeOCR("meeting notes 12.34"), "meeting notes 12.34")
     }
 
     func test_sanitizeOCR_dropsLowercaseLedTokenWithInteriorCapital() {

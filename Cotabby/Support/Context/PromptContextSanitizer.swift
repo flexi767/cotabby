@@ -47,10 +47,17 @@ enum PromptContextSanitizer {
     /// Stricter sanitization for OCR text headed to the prompt excerpt.
     ///
     /// OCR adds a second failure mode beyond ordinary prompt injection: Vision can hallucinate
-    /// short mixed-case blobs, random alphanumeric IDs, repeated glyphs, and numeric UI chrome.
-    /// Those fragments are especially harmful for autocomplete because the model may copy them as
-    /// the next token. The line pass below keeps real prose and technical terms, but drops a line
-    /// when most of its original tokens score as OCR noise.
+    /// short mixed-case blobs, repeated glyphs, and stray glyph runs. Those fragments are harmful
+    /// because the model may copy them as the next token.
+    ///
+    /// The judgment is per LINE, not per token, and that is the whole design. Token-by-token
+    /// filtering deleted exactly the words worth completing from: a line like
+    /// "Invoice 4412 is overdue" lost its invoice number, "Q3 budget review" lost the quarter,
+    /// "SCR-482 the importer drops listings" lost the ticket, and "BMW 320d Touring / 24 900 EUR"
+    /// was erased down to the city name. Numbers, identifiers, and acronyms are precisely the
+    /// vocabulary a reply needs to echo, and in a line that also carries real words they are real
+    /// too. So a line is judged as a whole and kept VERBATIM when it carries word signal and is
+    /// not mostly junk; otherwise it is dropped entirely.
     static func sanitizeOCR(_ rawText: String, maxCharacters: Int? = nil) -> String {
         let baseSanitized = sanitize(rawText, maxCharacters: nil)
         let filteredLines = baseSanitized
@@ -103,88 +110,113 @@ enum PromptContextSanitizer {
         "test", "token", "user", "view", "xcode"
     ]
 
-    private struct OCRTokenAssessment {
-        let shouldKeep: Bool
-        let isStrongSignal: Bool
+    /// How much a single OCR token says about the line it sits in.
+    ///
+    /// Three classes, not two, because "keep this token" and "this line is real" are different
+    /// questions. `neutral` is the class that matters: a bare number, an identifier like `320d`,
+    /// or a two-letter word says nothing about whether the line is genuine, but it is not junk
+    /// either, and deleting it costs the completion the very word a reply would reuse.
+    private enum OCRTokenClass {
+        /// A real word, acronym, email address, domain/file token, or non-Latin text.
+        case signal
+        /// Carried along when the line qualifies: numbers, alphanumeric identifiers, short words.
+        case neutral
+        /// What OCR invents: repeated-glyph runs and short mixed-case blobs.
+        case noise
     }
 
-    /// Filters a single OCR line with deterministic token scoring, then drops the entire line if
-    /// fewer than half its original tokens survived.
+    /// Keeps or drops one OCR line. The line qualifies when it carries at least one signal token
+    /// and fewer than half its tokens are noise; it then keeps every signal and neutral token in
+    /// place — numbers, prices, times and identifiers included — and only the hallucinated tokens
+    /// are removed. A line that does not qualify is dropped whole, chrome and all.
     private static func filterOCRNoiseLine(_ line: String) -> String? {
         let tokens = line.components(separatedBy: " ").filter { !$0.isEmpty }
         guard !tokens.isEmpty else { return nil }
 
-        let assessedTokens = tokens.map { token in
-            (token: token, assessment: assessOCRToken(token))
-        }
-        let kept = assessedTokens
-            .filter(\.assessment.shouldKeep)
-            .map(\.token)
+        let classified = tokens.map { (token: $0, class: classifyOCRToken($0)) }
+        guard classified.contains(where: { $0.class == .signal }) else { return nil }
 
-        // If more than half the tokens were noise, the whole line is probably UI chrome.
-        guard kept.count * 2 >= tokens.count else { return nil }
-        guard assessedTokens.contains(where: { $0.assessment.shouldKeep && $0.assessment.isStrongSignal }) else {
-            return nil
-        }
+        // A majority of hallucinated tokens means the whole line is a hallucination. An even split
+        // is not: two real words beside two OCR blobs is a real line with junk in it, and the junk
+        // is removed below.
+        let noiseCount = classified.filter { $0.class == .noise }.count
+        guard noiseCount * 2 <= tokens.count else { return nil }
 
+        let kept = classified.filter { $0.class != .noise }.map(\.token)
         let result = kept.joined(separator: " ")
         return result.isEmpty ? nil : result
     }
 
-    private static func assessOCRToken(_ token: String) -> OCRTokenAssessment {
+    private static func classifyOCRToken(_ token: String) -> OCRTokenClass {
         let lowercasedToken = token.lowercased()
 
+        // A bare number is neither evidence nor junk on its own. Inside a real line it is a price,
+        // a time, a quarter, or an invoice number — the most quotable thing on the screen.
         if token.allSatisfy(\.isNumber) {
-            return OCRTokenAssessment(shouldKeep: false, isStrongSignal: false)
+            return .neutral
         }
 
         if isEmailLikeToken(token) || isFileOrDomainLikeToken(token) {
-            return OCRTokenAssessment(shouldKeep: true, isStrongSignal: true)
+            return .signal
         }
 
         if preservedTechnicalTokens.contains(lowercasedToken) || commonAcronyms.contains(token) {
-            return OCRTokenAssessment(shouldKeep: true, isStrongSignal: true)
+            return .signal
+        }
+
+        // Short ALL-CAPS runs are currencies, tickers, and product acronyms (EUR, BMW, RTX, PDF):
+        // vowel-free by nature, so the Latin heuristics below would sink them and take the whole
+        // line with them. Mixed-case blobs are handled separately and stay noise.
+        if isShortAllCapsToken(token) {
+            return .signal
         }
 
         if isRepeatedGlyphJunk(token) {
-            return OCRTokenAssessment(shouldKeep: false, isStrongSignal: false)
+            return .noise
         }
 
         // Non-Latin scripts (CJK, Cyrillic, Greek, Arabic, Hebrew, Thai, ...) and accented Latin
         // (café, Zürich, naïve) carry real context but have no ASCII vowel and never match the
         // English word lists, so the Latin-tuned heuristics below would strip them to nothing and
-        // leave non-English users with no visual context at all. Numbers and repeated-glyph junk
-        // are already rejected above, so a token carrying genuine non-ASCII letters is real OCR
-        // text: keep it as strong signal. (Splitting the Latin tail into its own helper also keeps
-        // this function under the cyclomatic-complexity limit.)
+        // leave non-English users with no visual context at all.
         if containsNonASCIILetter(token) {
-            return OCRTokenAssessment(shouldKeep: true, isStrongSignal: true)
+            return .signal
         }
 
-        return assessLatinToken(token, lowercased: lowercasedToken)
+        return classifyLatinToken(token, lowercased: lowercasedToken)
     }
 
-    /// Scores an ASCII-only token. Reached only after `assessOCRToken` has handled numbers, emails,
-    /// file/domain tokens, acronyms, repeated-glyph junk, and any token carrying non-ASCII letters.
-    private static func assessLatinToken(_ token: String, lowercased lowercasedToken: String) -> OCRTokenAssessment {
-        // A token this short can never be repeated-glyph junk (that needs >= 4 scalars), so the
-        // earlier ordering relative to that check does not change the outcome.
+    /// Classifies an ASCII-only token. Reached only after `classifyOCRToken` has handled numbers,
+    /// emails, file/domain tokens, acronyms, repeated-glyph junk, and non-ASCII letters.
+    private static func classifyLatinToken(_ token: String, lowercased lowercasedToken: String) -> OCRTokenClass {
+        // A one or two letter token is never evidence that a line is real prose: a line of nothing
+        // but "we go to it" is as likely to be UI chrome as a sentence, and the old filter dropped
+        // it for that reason. Known short words ride along; unknown ones do too, since dropping
+        // them would break up a line that qualifies on its longer words.
         if token.count <= 2 {
-            let shouldKeep = preservedShortWords.contains(lowercasedToken)
-            return OCRTokenAssessment(shouldKeep: shouldKeep, isStrongSignal: false)
+            return .neutral
         }
 
-        if containsLettersAndNumbers(token) {
-            let hasKnownWord = containsKnownWordSignal(token)
-            return OCRTokenAssessment(shouldKeep: hasKnownWord, isStrongSignal: hasKnownWord)
-        }
-
+        // The mixed-case check runs before the alphanumeric one so a hallucinated blob that also
+        // carries digits ("54tbdbDX") is still noise, while a short identifier ("Q3", "320d",
+        // "RTX5070") has too few letters to trip it.
         if isLikelyShortMixedCaseNoise(token) {
-            return OCRTokenAssessment(shouldKeep: false, isStrongSignal: false)
+            return .noise
         }
 
-        let shouldKeep = hasWordSignal(token)
-        return OCRTokenAssessment(shouldKeep: shouldKeep, isStrongSignal: shouldKeep)
+        // Letters and digits together: `Q3`, `320d`, `SCR-482` once the hyphen survives. Real when
+        // the line around them is real, which is what `neutral` means.
+        if containsLettersAndNumbers(token) {
+            return containsKnownWordSignal(token) ? .signal : .neutral
+        }
+
+        return hasWordSignal(token) ? .signal : .neutral
+    }
+
+    /// True for a 2-6 character token written entirely in capital letters.
+    private static func isShortAllCapsToken(_ token: String) -> Bool {
+        guard (2...6).contains(token.count) else { return false }
+        return token.allSatisfy { $0.isLetter && $0.isUppercase && $0.isASCII }
     }
 
     /// True when the token carries a letter outside ASCII: CJK, Cyrillic, Greek, Arabic, Hebrew,
