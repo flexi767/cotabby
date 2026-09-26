@@ -69,6 +69,9 @@ final class SuggestionSettingsModel: ObservableObject {
     /// When on (the default), prompts may state which app, window, domain, and field the user is
     /// typing in. See `SurfaceContextComposer` for what is actually rendered.
     @Published private(set) var isSurfaceContextEnabled: Bool
+    /// When on (the default), prompts may state phrases this writer has finished typing more than
+    /// once. The phrases live in `PhraseMemoryStore`; this only gates learning and injection.
+    @Published private(set) var isPhraseMemoryEnabled: Bool
     @Published private(set) var isFastModeEnabled: Bool
     /// When on, a misspelled current word hides the normal continuation (see the typo gate).
     @Published private(set) var suppressCompletionsOnTypo: Bool
@@ -219,6 +222,7 @@ final class SuggestionSettingsModel: ObservableObject {
         customWordCountHighWords = data.customWordCountHighWords
         isClipboardContextEnabled = data.isClipboardContextEnabled
         isSurfaceContextEnabled = data.isSurfaceContextEnabled
+        isPhraseMemoryEnabled = data.isPhraseMemoryEnabled
         isFastModeEnabled = data.isFastModeEnabled
         suppressCompletionsOnTypo = data.suppressCompletionsOnTypo
         offerTypoCorrections = data.offerTypoCorrections
@@ -296,6 +300,7 @@ final class SuggestionSettingsModel: ObservableObject {
         customWordCountHighWords = data.customWordCountHighWords
         isClipboardContextEnabled = data.isClipboardContextEnabled
         isSurfaceContextEnabled = data.isSurfaceContextEnabled
+        isPhraseMemoryEnabled = data.isPhraseMemoryEnabled
         isFastModeEnabled = data.isFastModeEnabled
         suppressCompletionsOnTypo = data.suppressCompletionsOnTypo
         offerTypoCorrections = data.offerTypoCorrections
@@ -393,6 +398,7 @@ final class SuggestionSettingsModel: ObservableObject {
             context: SuggestionContextSettings(
                 isClipboardContextEnabled: isClipboardContextEnabled,
                 isSurfaceContextEnabled: isSurfaceContextEnabled,
+                isPhraseMemoryEnabled: isPhraseMemoryEnabled,
                 isFastModeEnabled: isFastModeEnabled,
                 userName: userName,
                 customRules: customRules,
@@ -461,6 +467,7 @@ final class SuggestionSettingsModel: ObservableObject {
             ),
             isClipboardContextEnabled: settings.context.isClipboardContextEnabled,
             isSurfaceContextEnabled: settings.context.isSurfaceContextEnabled,
+            isPhraseMemoryEnabled: settings.context.isPhraseMemoryEnabled,
             userName: settings.context.userName,
             customRules: settings.context.customRules,
             extendedContext: settings.context.extendedContext,
@@ -690,6 +697,15 @@ final class SuggestionSettingsModel: ObservableObject {
 
         isSurfaceContextEnabled = enabled
         store.saveSurfaceContextEnabled(enabled)
+    }
+
+    func setPhraseMemoryEnabled(_ enabled: Bool) {
+        guard isPhraseMemoryEnabled != enabled else {
+            return
+        }
+
+        isPhraseMemoryEnabled = enabled
+        store.savePhraseMemoryEnabled(enabled)
     }
 
     func setClipboardContextEnabled(_ enabled: Bool) {
@@ -1559,7 +1575,9 @@ extension SuggestionSettingsModel: SuggestionSettingsProviding {
                 $extendedContext,
                 $suggestInIntegratedTerminals,
                 $isSurfaceContextEnabled,
-                $isLowPowerModeAutoDisableEnabled
+                // Grouped with Low Power Mode purely for arity: the outer `CombineLatest4` is at
+                // Combine's four-upstream cap, so a new top-level setting has to share a slot.
+                Publishers.CombineLatest($isLowPowerModeAutoDisableEnabled, $isPhraseMemoryEnabled)
             ),
             customRange
         )
@@ -1573,8 +1591,9 @@ extension SuggestionSettingsModel: SuggestionSettingsProviding {
                 let (debounce, focusPoll, multiLine, acceptToggles) = timing
                 let (autoAcceptPunctuation, addSpaceAfterAccept, streamWhileGenerating) = acceptToggles
                 let (isCustomActive, customLow, customHigh) = customRangeTuple
-                let (extendedContext, suggestInIntegratedTerminals, surfaceContextEnabled, lowPowerModeAutoDisableEnabled) =
+                let (extendedContext, suggestInIntegratedTerminals, surfaceContextEnabled, powerToggles) =
                     extendedContextTuple
+                let (lowPowerModeAutoDisableEnabled, phraseMemoryEnabled) = powerToggles
                 return SuggestionSettingsSnapshot(
                     isGloballyEnabled: globallyEnabled,
                     isTemporarilyPaused: pauseState?.isActive() == true,
@@ -1587,6 +1606,7 @@ extension SuggestionSettingsModel: SuggestionSettingsProviding {
                     customWordCountRange: SuggestionWordRange.clamped(low: customLow, high: customHigh),
                     isClipboardContextEnabled: clipboardContextEnabled,
                     isSurfaceContextEnabled: surfaceContextEnabled,
+                    isPhraseMemoryEnabled: phraseMemoryEnabled,
                     userName: userName,
                     customRules: customRules,
                     extendedContext: extendedContext,

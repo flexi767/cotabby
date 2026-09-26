@@ -385,4 +385,62 @@ final class SuggestionRequestFactoryTests: XCTestCase {
         XCTAssertNil(result.request.surfaceContext, "app metadata biases base models toward code; editors stay bare")
         XCTAssertFalse(result.request.prompt.contains("Project.swift"))
     }
+
+    // MARK: - learned phrases
+
+    func test_buildRequest_includesALearnedPhraseThatContinuesTheCaretText() {
+        let context = CotabbyTestFixtures.focusedInputContext(
+            precedingText: "Thanks for the ping. I will send the"
+        )
+
+        let result = SuggestionRequestFactory.buildRequest(
+            context: context,
+            settings: CotabbyTestFixtures.settingsSnapshot(),
+            configuration: .standard,
+            phraseMemory: Self.phraseMemory(
+                "I will send the revised deck tomorrow",
+                bundleIdentifier: context.bundleIdentifier
+            )
+        )
+
+        XCTAssertEqual(result.request.learnedPhrases, ["I will send the revised deck tomorrow"])
+        XCTAssertTrue(result.request.prompt.contains("Phrases this writer reuses"))
+    }
+
+    /// Turning the setting off must stop injection immediately, even though the stored phrases stay
+    /// put until the user forgets them.
+    func test_buildRequest_omitsLearnedPhrasesWhenDisabled() {
+        let context = CotabbyTestFixtures.focusedInputContext(
+            precedingText: "Thanks for the ping. I will send the"
+        )
+
+        let result = SuggestionRequestFactory.buildRequest(
+            context: context,
+            settings: CotabbyTestFixtures.settingsSnapshot(isPhraseMemoryEnabled: false),
+            configuration: .standard,
+            phraseMemory: Self.phraseMemory(
+                "I will send the revised deck tomorrow",
+                bundleIdentifier: context.bundleIdentifier
+            )
+        )
+
+        XCTAssertTrue(result.request.learnedPhrases.isEmpty)
+        XCTAssertFalse(result.request.prompt.contains("Phrases this writer reuses"))
+    }
+
+    private static func phraseMemory(
+        _ text: String,
+        count: Int = 4,
+        bundleIdentifier: String
+    ) -> PhraseMemorySnapshot {
+        PhraseMemorySnapshot(phrases: [
+            LearnedPhrase(
+                key: PhraseHarvester.normalizedKey(for: text),
+                text: text,
+                count: count,
+                lastUsedAt: Date(),
+                bundleIdentifiers: [bundleIdentifier]
+            )
+        ])
+    }
 }

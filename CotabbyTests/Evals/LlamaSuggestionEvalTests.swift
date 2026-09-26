@@ -105,7 +105,8 @@ final class LlamaSuggestionEvalTests: XCTestCase {
             context: context,
             settings: settings,
             configuration: .standard,
-            visualContextSummary: evalCase.screenText.map(Self.screenExcerpt)
+            visualContextSummary: evalCase.screenText.map(Self.screenExcerpt),
+            phraseMemory: Self.phraseMemory(for: evalCase)
         ).request
 
         let start = Date()
@@ -160,6 +161,26 @@ final class LlamaSuggestionEvalTests: XCTestCase {
             PromptContextSanitizer.sanitize(filtered),
             maxChars: configuration.maxSummaryCharacters
         )
+    }
+
+    /// Builds the phrase memory a case describes, in the state the app would really be in: seen a
+    /// few times, most recently in this app. Three sightings is the floor at which both selection
+    /// paths are live — a continuation match needs two, an ambient favorite three — so a case can
+    /// exercise either without the fixture restating storage mechanics.
+    private static func phraseMemory(for evalCase: LlamaEvalCase) -> PhraseMemorySnapshot {
+        guard let learnedPhrases = evalCase.learnedPhrases, !learnedPhrases.isEmpty else {
+            return .empty
+        }
+        let now = Date()
+        return PhraseMemorySnapshot(phrases: learnedPhrases.map { text in
+            LearnedPhrase(
+                key: PhraseHarvester.normalizedKey(for: text),
+                text: text,
+                count: 3,
+                lastUsedAt: now,
+                bundleIdentifiers: [evalCase.bundleIdentifier]
+            )
+        })
     }
 
     private static func loadCases() throws -> [LlamaEvalCase] {

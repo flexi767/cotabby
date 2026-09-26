@@ -35,6 +35,7 @@ enum SuggestionRequestFactory {
         configuration: SuggestionConfiguration,
         clipboardContext: String? = nil,
         visualContextSummary: String? = nil,
+        phraseMemory: PhraseMemorySnapshot = .empty,
         keyboardLanguageCode: String? = nil
     ) -> SuggestionRequestBuildResult {
         let prefixText = truncatedPromptPrefix(
@@ -72,6 +73,17 @@ enum SuggestionRequestFactory {
         let boundedVisualContextSummary = activeVisualContextSummary(
             rawSummary: visualContextSummary
         )
+        // Ranking lives here, not in the coordinator, so the selection is computed against the same
+        // windowed prefix the model actually sees and so the gate reads the live setting: switching
+        // the feature off stops injection immediately, even though the stored phrases remain until
+        // the user forgets them.
+        let learnedPhrases = settings.isPhraseMemoryEnabled
+            ? PhraseMemoryRanker.selected(
+                from: phraseMemory,
+                prefixText: prefixText,
+                bundleIdentifier: context.bundleIdentifier
+            )
+            : []
         // The composed surface description; nil when the user disabled it or the surface class
         // suppresses it (code editors, terminals, anonymous generic apps). The composer sanitizes
         // titles/placeholders and reduces the URL to a bare domain before anything reaches a prompt.
@@ -99,6 +111,7 @@ enum SuggestionRequestFactory {
             customRules: customRules,
             extendedContext: activeExtendedContext,
             languageInstruction: languageInstruction,
+            learnedPhrases: learnedPhrases,
             clipboardContext: boundedClipboardContext,
             visualContextSummary: boundedVisualContextSummary,
             surfaceContext: surfaceContext,
@@ -128,6 +141,7 @@ enum SuggestionRequestFactory {
             customRules: customRules,
             extendedContext: activeExtendedContext,
             languageInstruction: languageInstruction,
+            learnedPhrases: learnedPhrases,
             clipboardContext: boundedClipboardContext,
             visualContextSummary: boundedVisualContextSummary,
             surfaceContext: surfaceContext,

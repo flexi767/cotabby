@@ -108,6 +108,14 @@ extension SuggestionCoordinator {
         if restoreSuggestionFromAnchorCache(context: context, workID: workID) {
             return
         }
+        // Keep the screen excerpt fresh while the writer keeps typing. The capture is asynchronous,
+        // so THIS request still carries the excerpt taken earlier; when a newer one lands the
+        // coordinator reschedules through `onInjectedContextReady`, the same path the initial capture
+        // uses. Without this a reply was always answered against the screen as it looked the instant
+        // the field was clicked.
+        if permissionManager.screenRecordingGranted, !settingsSnapshot.isFastModeEnabled {
+            visualContextCoordinator.refreshIfStale(for: rawContext)
+        }
         // Screen Recording is optional. Re-check it live so a cached excerpt captured before the user
         // revoked the permission can never be injected during the 2s permission-poll window.
         let visualContextSummary = permissionManager.screenRecordingGranted
@@ -120,6 +128,7 @@ extension SuggestionCoordinator {
             configuration: configuration,
             clipboardContext: clipboardContext,
             visualContextSummary: visualContextSummary,
+            phraseMemory: phraseMemoryStore.snapshot(),
             keyboardLanguageCode: keyboardLanguageCodeProvider()
         )
         latestGenerationNumber = context.generation
@@ -237,6 +246,7 @@ extension SuggestionCoordinator {
             configuration: configuration,
             clipboardContext: clipboardContext,
             visualContextSummary: visualContextSummary,
+            phraseMemory: phraseMemoryStore.snapshot(),
             keyboardLanguageCode: keyboardLanguageCodeProvider()
         )
         latestGenerationNumber = context.generation

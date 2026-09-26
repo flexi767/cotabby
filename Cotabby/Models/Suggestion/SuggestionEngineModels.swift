@@ -123,6 +123,9 @@ struct SuggestionSettingsSnapshot: Equatable, Sendable {
     /// (app class, window title, web domain, field placeholder). Travels in the snapshot so
     /// generation uses the same value the Settings UI shows.
     let isSurfaceContextEnabled: Bool
+    /// When true (the default), prompts may state phrases this writer has finished typing more than
+    /// once (see `PhraseMemoryStore`), and finished text is harvested to find them.
+    let isPhraseMemoryEnabled: Bool
     /// User-authored profile data for Cotabby's base-model completion prompt.
     /// This travels in the snapshot so generation uses the same value the Settings UI shows.
     let userName: String

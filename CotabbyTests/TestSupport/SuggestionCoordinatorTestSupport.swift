@@ -208,11 +208,16 @@ final class RigVisualContextCoordinator: VisualContextCoordinating {
     var onStateChange: ((VisualContextStatus, String?) -> Void)?
     var onInjectedContextReady: ((FocusedInputIdentity) -> Void)?
     private(set) var startedSessions: [FocusedInputSnapshot] = []
+    private(set) var refreshRequests: [FocusedInputSnapshot] = []
     private(set) var cancelCalls: [Bool] = []
     var excerptValue: String?
 
     func startSessionIfNeeded(for snapshotContext: FocusedInputSnapshot) {
         startedSessions.append(snapshotContext)
+    }
+
+    func refreshIfStale(for snapshotContext: FocusedInputSnapshot) {
+        refreshRequests.append(snapshotContext)
     }
 
     func cancel(resetState: Bool) {
@@ -288,6 +293,11 @@ func makeCoordinatorRig(
         symSpellCorrector: SymSpellCorrector(preloadLanguage: nil),
         qualityMetricsStore: SuggestionQualityMetricsStore(
             userDefaults: UserDefaults(suiteName: "CotabbyTests.rig.quality.\(UUID().uuidString)") ?? .standard
+        ),
+        // Per-rig defaults suite: phrase memory persists, and a test must never learn from (or write
+        // into) the phrases of whoever is running the suite.
+        phraseMemoryStore: PhraseMemoryStore(
+            defaults: UserDefaults(suiteName: "CotabbyTests.rig.phrases.\(UUID().uuidString)") ?? .standard
         ),
         userDefaults: UserDefaults(suiteName: "CotabbyTests.rig.\(UUID().uuidString)") ?? .standard
     )

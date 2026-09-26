@@ -36,6 +36,7 @@ final class CotabbyAppEnvironment {
     let macroController: MacroController
     let inlineCommandCoordinator: InlineCommandCoordinator
     let emojiUsageStore: EmojiUsageStore
+    let phraseMemoryStore: PhraseMemoryStore
     let welcomeCoordinator: WelcomeCoordinator
     let huggingFaceSearchService: HuggingFaceSearchService
     let performanceMetricsStore: PerformanceMetricsStore
@@ -223,6 +224,11 @@ final class CotabbyAppEnvironment {
         // "Clear History" control can reach it, and before the picker which reads and writes it.
         let emojiUsageStore = EmojiUsageStore()
 
+        // The writer's own recurring phrases. Built here, before both consumers: the suggestion
+        // coordinator is the only writer (it sees the focused field's text over time, which is what
+        // commit detection needs) and the Context settings pane reads the counts and offers "forget".
+        let phraseMemoryStore = PhraseMemoryStore()
+
         let settingsCoordinator = SettingsCoordinator(
             appUpdateManager: appUpdateManager,
             permissionManager: permissionManager,
@@ -239,7 +245,8 @@ final class CotabbyAppEnvironment {
             onShowWelcome: { [weak welcomeCoordinator] in
                 welcomeCoordinator?.showWelcome()
             },
-            clearEmojiHistory: { emojiUsageStore.clear() }
+            clearEmojiHistory: { emojiUsageStore.clear() },
+            phraseMemoryStore: phraseMemoryStore
         )
 
         let interactionState = SuggestionInteractionState()
@@ -274,7 +281,8 @@ final class CotabbyAppEnvironment {
             spellChecker: spellChecker,
             symSpellCorrector: symSpellCorrector,
             spellingLanguageResolver: SpellingLanguageResolver(),
-            qualityMetricsStore: qualityMetricsStore
+            qualityMetricsStore: qualityMetricsStore,
+            phraseMemoryStore: phraseMemoryStore
         )
 
         // The emoji picker is a sibling to the suggestion coordinator. It reuses the input monitor,
@@ -343,6 +351,7 @@ final class CotabbyAppEnvironment {
         self.macroController = macroController
         self.inlineCommandCoordinator = inlineCommandCoordinator
         self.emojiUsageStore = emojiUsageStore
+        self.phraseMemoryStore = phraseMemoryStore
         self.welcomeCoordinator = welcomeCoordinator
         self.huggingFaceSearchService = huggingFaceSearchService
         self.performanceMetricsStore = performanceMetricsStore

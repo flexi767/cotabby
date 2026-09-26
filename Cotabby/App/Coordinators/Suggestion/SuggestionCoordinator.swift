@@ -48,6 +48,11 @@ final class SuggestionCoordinator: ObservableObject {
     /// Always-on quality counters (shown / suppressed / accepted). The router counts generation
     /// outcomes; the coordinator owns the display-time and acceptance events only it can see.
     let qualityMetricsStore: SuggestionQualityMetricsStore
+    /// Durable memory of the phrases this writer finishes typing. The coordinator is the only writer:
+    /// it is the one place that sees the focused field's text over time, which is what commit
+    /// detection needs. Read on every request build so a phrase learned a minute ago is already in
+    /// play.
+    let phraseMemoryStore: PhraseMemoryStore
     /// Frequency-ranked correction source (SymSpell). Used first for the correction word, with
     /// `spellChecker` as the fallback while its index is still loading or when it has no suggestion.
     let symSpellCorrector: SymSpellCorrector
@@ -144,6 +149,10 @@ final class SuggestionCoordinator: ObservableObject {
     /// coordinator continues to own the timer and input-monitor effects around these transitions.
     var postExhaustionAcceptanceState = PostExhaustionAcceptanceState()
 
+    /// Watches the focused field's text across focus events for the moment the writer finished with
+    /// it (sent it, or moved on), which is the only moment `phraseMemoryStore` learns from.
+    var typedTextCommitDetector = TypedTextCommitDetector()
+
     init(
         permissionManager: any SuggestionPermissionProviding,
         lowPowerModeProvider: any SuggestionLowPowerModeProviding,
@@ -163,6 +172,9 @@ final class SuggestionCoordinator: ObservableObject {
         symSpellCorrector: SymSpellCorrector,
         spellingLanguageResolver: SpellingLanguageResolver = SpellingLanguageResolver(),
         qualityMetricsStore: SuggestionQualityMetricsStore,
+        // Not defaulted: a default argument is evaluated in the caller's nonisolated context, and
+        // this store is main-actor isolated like the coordinator itself.
+        phraseMemoryStore: PhraseMemoryStore,
         userDefaults: UserDefaults = .standard
     ) {
         let storedTotalTabAcceptedWordCount = userDefaults.integer(
@@ -186,6 +198,7 @@ final class SuggestionCoordinator: ObservableObject {
         self.symSpellCorrector = symSpellCorrector
         self.spellingLanguageResolver = spellingLanguageResolver
         self.qualityMetricsStore = qualityMetricsStore
+        self.phraseMemoryStore = phraseMemoryStore
         self.userDefaults = userDefaults
         settingsSnapshot = suggestionSettings.snapshot
         // These collaborators isolate "how overlay/logging works" from "when the coordinator

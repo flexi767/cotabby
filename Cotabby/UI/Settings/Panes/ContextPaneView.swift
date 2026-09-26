@@ -25,6 +25,9 @@ import SwiftUI
 /// can type a trailing space; `SuggestionRequestFactory` does the once-per-request trim instead.
 struct ContextPaneView: View {
     @ObservedObject var suggestionSettings: SuggestionSettingsModel
+    /// Counts and the forget control for the learned-phrase memory. Observed rather than passed as
+    /// closures so the labels update the moment a phrase is learned or the memory is cleared.
+    @ObservedObject var phraseMemoryStore: PhraseMemoryStore
 
     private static let previewEditorMinHeight: CGFloat = 132
     private static let extendedContextEditorMinHeight: CGFloat = 220
@@ -32,6 +35,7 @@ struct ContextPaneView: View {
     var body: some View {
         SettingsPaneScaffold {
             livePreviewSection
+            learnedPhrasesSection
             extendedContextSection
             howThisIsUsedSection
         }
@@ -73,6 +77,45 @@ struct ContextPaneView: View {
             }
             .padding(.vertical, 6)
             .settingsItem(.contextLivePreview)
+        }
+    }
+
+    // MARK: - Learned phrases
+
+    /// The counterpart to Extended Context: where that is context the user writes by hand, this is
+    /// context Cotabby assembles by watching what they actually type. Both land in the same prompt,
+    /// so they belong in the same pane — and the "forget" control belongs next to the counter that
+    /// shows there is something to forget.
+    private var learnedPhrasesSection: some View {
+        Section("Learned phrases") {
+            VStack(alignment: .leading, spacing: 12) {
+                Toggle(isOn: phraseMemoryBinding) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Learn phrases I type often")
+                        Text("When you finish a message, Cotabby remembers its sentences. A phrase " +
+                            "has to show up at least twice before it is ever used in a suggestion.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                HStack {
+                    Text(learnedPhraseCountLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+
+                    Spacer(minLength: 0)
+
+                    Button("Forget Learned Phrases", role: .destructive) {
+                        phraseMemoryStore.forgetAll()
+                    }
+                    .disabled(phraseMemoryStore.phraseCount == 0)
+                }
+            }
+            .padding(.vertical, 6)
+            .settingsItem(.learnedPhrases)
         }
     }
 
@@ -150,6 +193,11 @@ struct ContextPaneView: View {
                     "Stored locally on this Mac. Nothing is uploaded; this only feeds the " +
                         "on-device model."
                 )
+                bulletLine(
+                    "Learned phrases are never taken from password fields, terminals, or code " +
+                        "editors, and anything shaped like a key, token, address, or long number " +
+                        "is skipped."
+                )
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -158,6 +206,24 @@ struct ContextPaneView: View {
     }
 
     // MARK: - Bindings & helpers
+
+    private var phraseMemoryBinding: Binding<Bool> {
+        Binding(
+            get: { suggestionSettings.isPhraseMemoryEnabled },
+            set: { suggestionSettings.setPhraseMemoryEnabled($0) }
+        )
+    }
+
+    /// Both numbers, because they answer different questions: how much has been observed, and how
+    /// much of it has repeated often enough to actually influence a suggestion.
+    private var learnedPhraseCountLabel: String {
+        let stored = phraseMemoryStore.phraseCount
+        guard stored > 0 else {
+            return "Nothing learned yet."
+        }
+        return "\(stored) phrase\(stored == 1 ? "" : "s") remembered, "
+            + "\(phraseMemoryStore.eligiblePhraseCount) seen often enough to be used."
+    }
 
     private var editorBinding: Binding<String> {
         Binding(

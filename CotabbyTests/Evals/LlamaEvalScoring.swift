@@ -70,11 +70,16 @@ struct LlamaEvalCase: Decodable, Equatable {
     /// line last (the capture band ends at the field, so the bottom line is the one being replied
     /// to). Optional: cases without it measure the no-screen-context path exactly as before.
     var screenText: String?
+    /// Phrases this writer has finished typing before, as `PhraseMemoryStore` would hold them. The
+    /// harness turns these into a memory snapshot and lets the real ranker decide which (if any)
+    /// reach the prompt, so a case measures selection as well as prompting. Optional: cases without
+    /// it measure the no-phrase-memory path exactly as before.
+    var learnedPhrases: [String]?
     let expectation: LlamaEvalExpectation
 
     private enum CodingKeys: String, CodingKey {
         case id, tags, applicationName, bundleIdentifier
-        case precedingText, trailingText, isMultiLineEnabled, screenText, expectation
+        case precedingText, trailingText, isMultiLineEnabled, screenText, learnedPhrases, expectation
     }
 
     init(from decoder: Decoder) throws {
@@ -88,6 +93,7 @@ struct LlamaEvalCase: Decodable, Equatable {
         trailingText = try container.decodeIfPresent(String.self, forKey: .trailingText) ?? ""
         isMultiLineEnabled = try container.decodeIfPresent(Bool.self, forKey: .isMultiLineEnabled) ?? true
         screenText = try container.decodeIfPresent(String.self, forKey: .screenText)
+        learnedPhrases = try container.decodeIfPresent([String].self, forKey: .learnedPhrases)
         expectation = try container.decode(LlamaEvalExpectation.self, forKey: .expectation)
     }
 
@@ -100,6 +106,7 @@ struct LlamaEvalCase: Decodable, Equatable {
         trailingText: String = "",
         isMultiLineEnabled: Bool = true,
         screenText: String? = nil,
+        learnedPhrases: [String]? = nil,
         expectation: LlamaEvalExpectation
     ) {
         self.id = id
@@ -110,6 +117,7 @@ struct LlamaEvalCase: Decodable, Equatable {
         self.trailingText = trailingText
         self.isMultiLineEnabled = isMultiLineEnabled
         self.screenText = screenText
+        self.learnedPhrases = learnedPhrases
         self.expectation = expectation
     }
 

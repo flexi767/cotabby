@@ -63,6 +63,10 @@ struct SuggestionRequest: Equatable, Sendable {
     /// override: it tells the model to match the surrounding text and only fall back to the declared
     /// languages when that text is ambiguous, which protects code-switching.
     let languageInstruction: String?
+    /// Phrases this writer has finished typing before, selected for THIS caret position by
+    /// `PhraseMemoryRanker` (strongest first). Empty when the feature is off, when nothing has been
+    /// seen twice, or when nothing stored fits the text being typed.
+    let learnedPhrases: [String]
     /// Ephemeral clipboard context captured only when the user has enabled clipboard prompting.
     let clipboardContext: String?
     /// Ephemeral screen context summary injected only when available for the active text field.
@@ -98,6 +102,7 @@ struct SuggestionRequest: Equatable, Sendable {
         customRules: [String],
         extendedContext: String? = nil,
         languageInstruction: String?,
+        learnedPhrases: [String] = [],
         clipboardContext: String?,
         visualContextSummary: String?,
         surfaceContext: SurfaceContext? = nil,
@@ -121,6 +126,7 @@ struct SuggestionRequest: Equatable, Sendable {
         self.customRules = customRules
         self.extendedContext = extendedContext
         self.languageInstruction = languageInstruction
+        self.learnedPhrases = learnedPhrases
         self.clipboardContext = clipboardContext
         self.visualContextSummary = visualContextSummary
         self.surfaceContext = surfaceContext

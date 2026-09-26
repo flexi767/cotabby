@@ -511,6 +511,9 @@ final class SuggestionCoordinatorAcceptanceTests: XCTestCase {
             qualityMetricsStore: SuggestionQualityMetricsStore(
                 userDefaults: UserDefaults(suiteName: "CotabbyTests.quality.\(UUID().uuidString)") ?? .standard
             ),
+            phraseMemoryStore: PhraseMemoryStore(
+                defaults: UserDefaults(suiteName: "CotabbyTests.phrases.\(UUID().uuidString)") ?? .standard
+            ),
             userDefaults: UserDefaults(suiteName: "CotabbyTests.\(UUID().uuidString)") ?? .standard
         )
         Self.retainedCoordinators.append(coordinator)
@@ -665,6 +668,8 @@ private final class StubVisualContextCoordinator: VisualContextCoordinating {
     var onInjectedContextReady: ((FocusedInputIdentity) -> Void)?
 
     func startSessionIfNeeded(for snapshotContext: FocusedInputSnapshot) {}
+
+    func refreshIfStale(for snapshotContext: FocusedInputSnapshot) {}
 
     func cancel(resetState: Bool) {}
 

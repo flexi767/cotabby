@@ -110,6 +110,7 @@ struct SuggestionSettingsStore {
     private static let legacyShortPresetRawValue = "3-7"
     private static let clipboardContextEnabledDefaultsKey = "cotabbyClipboardContextEnabled"
     private static let surfaceContextEnabledDefaultsKey = "cotabbySurfaceContextEnabled"
+    private static let phraseMemoryEnabledDefaultsKey = "cotabbyPhraseMemoryEnabled"
     private static let fastModeEnabledDefaultsKey = "cotabbyFastModeEnabled"
     private static let suppressCompletionsOnTypoDefaultsKey = "cotabbySuppressCompletionsOnTypo"
     private static let offerTypoCorrectionsDefaultsKey = "cotabbyOfferTypoCorrections"
@@ -189,6 +190,7 @@ struct SuggestionSettingsStore {
         customWordCountHighWordsDefaultsKey,
         clipboardContextEnabledDefaultsKey,
         surfaceContextEnabledDefaultsKey,
+        phraseMemoryEnabledDefaultsKey,
         fastModeEnabledDefaultsKey,
         suppressCompletionsOnTypoDefaultsKey,
         offerTypoCorrectionsDefaultsKey,
@@ -317,6 +319,11 @@ struct SuggestionSettingsStore {
         // Accessibility read per field. Users who want fully context-free prompts can switch it off.
         let resolvedSurfaceContextEnabled =
             userDefaults.object(forKey: Self.surfaceContextEnabledDefaultsKey) as? Bool ?? true
+        // Defaults to true for the same reason surface context does: it costs one cached read per
+        // request, never leaves the device, and it is the only context source that knows how THIS
+        // writer words things. The phrases themselves are forgettable from Settings at any time.
+        let resolvedPhraseMemoryEnabled =
+            userDefaults.object(forKey: Self.phraseMemoryEnabledDefaultsKey) as? Bool ?? true
         // Defaults to false so the visual-context pipeline keeps running for existing users; opting
         // into fast mode turns it off.
         let resolvedFastModeEnabled =
@@ -546,6 +553,7 @@ struct SuggestionSettingsStore {
             context: SuggestionContextSettings(
                 isClipboardContextEnabled: resolvedClipboardContextEnabled,
                 isSurfaceContextEnabled: resolvedSurfaceContextEnabled,
+                isPhraseMemoryEnabled: resolvedPhraseMemoryEnabled,
                 isFastModeEnabled: resolvedFastModeEnabled,
                 userName: resolvedUserName,
                 customRules: resolvedCustomRules,
@@ -616,6 +624,7 @@ struct SuggestionSettingsStore {
         saveCustomWordCountRange(low: data.customWordCountLowWords, high: data.customWordCountHighWords)
         saveClipboardContextEnabled(data.isClipboardContextEnabled)
         saveSurfaceContextEnabled(data.isSurfaceContextEnabled)
+        savePhraseMemoryEnabled(data.isPhraseMemoryEnabled)
         saveFastModeEnabled(data.isFastModeEnabled)
         saveSuppressCompletionsOnTypo(data.suppressCompletionsOnTypo)
         saveOfferTypoCorrections(data.offerTypoCorrections)
@@ -823,6 +832,10 @@ struct SuggestionSettingsStore {
 
     func saveSurfaceContextEnabled(_ enabled: Bool) {
         userDefaults.set(enabled, forKey: Self.surfaceContextEnabledDefaultsKey)
+    }
+
+    func savePhraseMemoryEnabled(_ enabled: Bool) {
+        userDefaults.set(enabled, forKey: Self.phraseMemoryEnabledDefaultsKey)
     }
 
     func saveFastModeEnabled(_ enabled: Bool) {

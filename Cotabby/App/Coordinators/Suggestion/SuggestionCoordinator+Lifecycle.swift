@@ -19,6 +19,9 @@ extension SuggestionCoordinator {
         cancelPredictionWork()
         resetCachedGenerationContext()
         visualContextCoordinator.cancel(resetState: true)
+        // Learn from whatever the writer left in the focused field before the observation stream
+        // goes away; after teardown no further snapshot can close it out.
+        recordPhraseMemoryCommit(typedTextCommitDetector.flush())
         hideOverlay(reason: "Overlay hidden because Cotabby stopped observing suggestions.")
         inputMonitor.onEvent = nil
         inputMonitor.onSuppressedSyntheticInput = nil

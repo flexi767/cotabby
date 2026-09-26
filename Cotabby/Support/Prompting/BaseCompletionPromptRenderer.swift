@@ -25,6 +25,7 @@ enum BaseCompletionPromptRenderer {
         customRules: [String] = [],
         extendedContext: String? = nil,
         languageInstruction: String? = nil,
+        learnedPhrases: [String] = [],
         clipboardContext: String? = nil,
         visualContextSummary: String? = nil,
         surfaceContext: SurfaceContext? = nil,
@@ -63,6 +64,13 @@ enum BaseCompletionPromptRenderer {
             // total budget below (priority 40), so an unusually long prefix can trim it, but in normal use
             // the whole blob lands.
             sections.append(Self.contextSection("notes", "Notes the writer keeps in mind: \(notes)", priority: 40, maxChars: 1300))
+        }
+        if let phrases = Self.phrasesLine(learnedPhrases) {
+            // Above notes, clipboard, and screen: a phrase that starts with the words already typed
+            // is the most directly actionable context this prompt can carry — it names the exact
+            // sentence this writer finishes this way, rather than describing their situation. Below
+            // the language hint, because getting the language wrong is worse than missing a habit.
+            sections.append(Self.contextSection("phrases", phrases, priority: 45, maxChars: 300))
         }
         if let clip = Self.nonEmpty(clipboardContext) {
             sections.append(Self.contextSection("clipboard", "On the clipboard: \(clip)", priority: 35, maxChars: 400))
@@ -125,6 +133,18 @@ enum BaseCompletionPromptRenderer {
     }
 
     private static let screenSectionMaxChars = 500
+
+    /// "Phrases this writer reuses: a; b." or nil. Stated as habit rather than as an instruction to
+    /// copy, because a base model obeys nothing and conditions on everything: describing the phrases
+    /// as this person's own wording is what makes the continuation land in their voice. Semicolons
+    /// (not quotes) separate them — quotation marks in the preface invite quoted ghost text.
+    private static func phrasesLine(_ phrases: [String]) -> String? {
+        let cleaned = phrases
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !cleaned.isEmpty else { return nil }
+        return "Phrases this writer reuses: \(cleaned.joined(separator: "; "))."
+    }
 
     /// "Written by <name>." or nil. Conditions the voice via authorship framing.
     private static func personaLine(_ userName: String?) -> String? {

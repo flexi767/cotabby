@@ -74,6 +74,10 @@ extension SuggestionCoordinator {
         CotabbyLogger.suggestion.trace(
             "Focus snapshot changed: app=\(snapshot.applicationName) capability=\(snapshot.capability.shortLabel) detail=\(changedDetail)"
         )
+        // Learn from the writer's own finished text. This rides the focus stream rather than the
+        // keystroke stream on purpose: the signal that a message was sent is the field going empty,
+        // which produces a focus snapshot but no keystroke Cotabby can see.
+        observeTypedTextForPhraseMemory(snapshot)
         // Start capturing visual context for a newly focused input even when predictions are
         // temporarily disabled by transient field states (e.g., "text is selected" or "secure
         // field"). Skip capture entirely when the subsystem is hard-disabled (globally off,
@@ -177,10 +181,68 @@ extension SuggestionCoordinator {
                 context: prewarmContext,
                 settings: settings,
                 configuration: configuration,
+                phraseMemory: self.phraseMemoryStore.snapshot(),
                 keyboardLanguageCode: keyboardLanguageCode
             ).request
             await suggestionEngine.prewarm(for: request)
         }
+    }
+
+    /// Feeds the focused field's full text to the commit detector and records whatever it reports
+    /// finished. Everything expensive stays out of this path: one string compare per focus snapshot,
+    /// and harvesting only runs on the rare commit.
+    ///
+    /// Three refusals, all deliberate:
+    /// - the feature is off, so nothing is learned even though phrases may already be stored;
+    /// - the field is secure, so passwords are never observed (the same `isSecure` gate the
+    ///   prediction path uses);
+    /// - the surface is a terminal or a code editor, where "finished text" is shell history and
+    ///   source lines — including, sooner or later, a pasted key or an `.env` value.
+    func observeTypedTextForPhraseMemory(_ snapshot: FocusSnapshot) {
+        guard settingsSnapshot.isPhraseMemoryEnabled else { return }
+
+        guard let context = snapshot.context, !context.isSecure else {
+            // No eligible field: whatever was tracked is finished by definition.
+            recordPhraseMemoryCommit(typedTextCommitDetector.flush())
+            return
+        }
+
+        switch AppSurfaceClassifier.classify(
+            bundleIdentifier: context.bundleIdentifier,
+            isIntegratedTerminal: context.isIntegratedTerminal
+        ) {
+        case .terminal, .codeEditor:
+            recordPhraseMemoryCommit(typedTextCommitDetector.flush())
+            return
+        case .email, .chat, .browser, .other:
+            break
+        }
+
+        let commit = typedTextCommitDetector.observe(
+            // `elementIdentifier` alone, deliberately: `focusChangeSequence` churns on Chromium and
+            // Electron hosts that drop and re-acquire the same field, and treating each churn as a
+            // new field would commit the same untouched draft over and over. A recycled CFHash can
+            // instead merge two fields, whose worst case is one missed commit.
+            identityKey: context.elementIdentifier,
+            text: context.precedingText + context.trailingText,
+            bundleIdentifier: context.bundleIdentifier
+        )
+        recordPhraseMemoryCommit(commit)
+    }
+
+    /// Hands one finished block of text to the phrase memory and logs what was learned.
+    func recordPhraseMemoryCommit(_ commit: TypedTextCommitDetector.Commit?) {
+        guard let commit else { return }
+        let learned = phraseMemoryStore.record(
+            committedText: commit.text,
+            bundleIdentifier: commit.bundleIdentifier
+        )
+        guard !learned.isEmpty else { return }
+        // Count only: the phrases themselves are the writer's own words and stay out of the log.
+        CotabbyLogger.suggestion.trace(
+            // swiftlint:disable:next line_length
+            "Phrase memory learned \(learned.count) phrase(s); \(phraseMemoryStore.phraseCount) stored, \(phraseMemoryStore.eligiblePhraseCount) eligible."
+        )
     }
 
     func handleInputEvent(_ event: CapturedInputEvent) -> Bool {

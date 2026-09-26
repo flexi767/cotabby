@@ -140,6 +140,14 @@ enum FoundationModelPromptRenderer {
             sections.append(summary)
         }
 
+        // Phrases this writer has typed before. In the per-request prompt rather than the cached
+        // session instructions because the selection changes with every caret position.
+        if !request.learnedPhrases.isEmpty {
+            sections.append("")
+            sections.append("Phrases the user reuses (their own wording, reuse when it fits):")
+            sections.append(contentsOf: request.learnedPhrases.map { "- \($0)" })
+        }
+
         if let clipboardContext = request.clipboardContext,
            !clipboardContext.isEmpty {
             sections.append("")

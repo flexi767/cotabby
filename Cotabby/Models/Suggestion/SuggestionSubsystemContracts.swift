@@ -269,6 +269,11 @@ protocol VisualContextCoordinating: AnyObject {
     var onInjectedContextReady: ((FocusedInputIdentity) -> Void)? { get set }
 
     func startSessionIfNeeded(for snapshotContext: FocusedInputSnapshot)
+    /// Re-captures the screen for the field that is ALREADY being tracked, when the excerpt has gone
+    /// stale. Separate from `startSessionIfNeeded` because it must not disturb the excerpt currently
+    /// in use: a session start clears it and republishes `.capturing`, which would strip screen
+    /// context out of the next few requests.
+    func refreshIfStale(for snapshotContext: FocusedInputSnapshot)
     func cancel(resetState: Bool)
     func excerpt(for context: FocusedInputContext) -> String?
 }

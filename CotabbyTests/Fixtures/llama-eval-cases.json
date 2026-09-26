@@ -3374,5 +3374,363 @@
     "file edit"
    ]
   }
+ },
+ {
+  "id": "phrase-continuation-deck-01",
+  "tags": [
+   "phrases",
+   "chat",
+   "en"
+  ],
+  "applicationName": "Slack",
+  "bundleIdentifier": "com.tinyspeck.slackmacgap",
+  "precedingText": "Thanks for the ping. I will send the ",
+  "trailingText": "",
+  "isMultiLineEnabled": true,
+  "learnedPhrases": [
+   "I will send the revised deck tomorrow morning",
+   "let me know if that works for you"
+  ],
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "revised deck tomorrow morning",
+    "revised deck tomorrow",
+    "revised deck"
+   ]
+  }
+ },
+ {
+  "id": "phrase-continuation-loop-02",
+  "tags": [
+   "phrases",
+   "chat",
+   "en"
+  ],
+  "applicationName": "Slack",
+  "bundleIdentifier": "com.tinyspeck.slackmacgap",
+  "precedingText": "Good question. I will loop in ",
+  "trailingText": "",
+  "isMultiLineEnabled": true,
+  "learnedPhrases": [
+   "I will loop in Kalina from the ops team",
+   "I will send the revised deck tomorrow morning"
+  ],
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "Kalina from the ops team",
+    "Kalina from the ops",
+    "Kalina"
+   ]
+  }
+ },
+ {
+  "id": "phrase-continuation-mail-03",
+  "tags": [
+   "phrases",
+   "email",
+   "en"
+  ],
+  "applicationName": "Mail",
+  "bundleIdentifier": "com.apple.mail",
+  "precedingText": "Hi Peter,\n\nThanks for the reminder. Please confirm the ",
+  "trailingText": "",
+  "isMultiLineEnabled": true,
+  "learnedPhrases": [
+   "Please confirm the delivery window and the contact person",
+   "I will send the revised deck tomorrow morning"
+  ],
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "delivery window and the contact person",
+    "delivery window and the contact",
+    "delivery window"
+   ]
+  }
+ },
+ {
+  "id": "phrase-longest-match-04",
+  "tags": [
+   "phrases",
+   "email",
+   "en"
+  ],
+  "applicationName": "Mail",
+  "bundleIdentifier": "com.apple.mail",
+  "precedingText": "Hi Maria,\n\nPlease confirm the revised ",
+  "trailingText": "",
+  "isMultiLineEnabled": true,
+  "learnedPhrases": [
+   "Please confirm the delivery window and the contact person",
+   "Please confirm the revised timeline with the warehouse team"
+  ],
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "timeline with the warehouse team",
+    "timeline with the warehouse",
+    "timeline"
+   ]
+  }
+ },
+ {
+  "id": "phrase-continuation-de-05",
+  "tags": [
+   "phrases",
+   "email",
+   "de"
+  ],
+  "applicationName": "Mail",
+  "bundleIdentifier": "com.apple.mail",
+  "precedingText": "Hallo Maria,\n\nvielen Dank für die Info. Ich melde ",
+  "trailingText": "",
+  "isMultiLineEnabled": true,
+  "learnedPhrases": [
+   "Ich melde mich morgen bei dir mit den Zahlen",
+   "Viele Grüße aus Sofia"
+  ],
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "mich morgen bei dir mit den Zahlen",
+    "mich morgen bei dir",
+    "mich morgen"
+   ]
+  }
+ },
+ {
+  "id": "phrase-ambient-de-06",
+  "tags": [
+   "phrases",
+   "email",
+   "de"
+  ],
+  "applicationName": "Mail",
+  "bundleIdentifier": "com.apple.mail",
+  "precedingText": "Hallo Peter,\n\ndie Rechnung ist raus und der Termin steht. ",
+  "trailingText": "",
+  "isMultiLineEnabled": true,
+  "learnedPhrases": [
+   "Viele Grüße aus Sofia",
+   "Ich melde mich morgen bei dir mit den Zahlen"
+  ],
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "Viele Grüße aus Sofia",
+    "Viele Grüße",
+    "Ich melde mich morgen bei dir"
+   ]
+  }
+ },
+ {
+  "id": "phrase-continuation-bg-07",
+  "tags": [
+   "phrases",
+   "chat",
+   "bg"
+  ],
+  "applicationName": "Messages",
+  "bundleIdentifier": "com.apple.MobileSMS",
+  "precedingText": "Здравей! Ще ти изпратя ",
+  "trailingText": "",
+  "isMultiLineEnabled": true,
+  "learnedPhrases": [
+   "Ще ти изпратя обявата до края на деня",
+   "Поздрави от Пловдив"
+  ],
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "обявата до края на деня",
+    "обявата до края",
+    "обявата"
+   ]
+  }
+ },
+ {
+  "id": "phrase-ambient-signoff-08",
+  "tags": [
+   "phrases",
+   "chat",
+   "en"
+  ],
+  "applicationName": "Slack",
+  "bundleIdentifier": "com.tinyspeck.slackmacgap",
+  "precedingText": "Booked the big room for Thursday at ten. ",
+  "trailingText": "",
+  "isMultiLineEnabled": true,
+  "learnedPhrases": [
+   "let me know if that works for you",
+   "I will send the revised deck tomorrow morning"
+  ],
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "let me know if that works for you",
+    "let me know if that works",
+    "let me know"
+   ]
+  }
+ },
+ {
+  "id": "phrase-with-screen-09",
+  "tags": [
+   "phrases",
+   "screen",
+   "chat",
+   "en"
+  ],
+  "applicationName": "Slack",
+  "bundleIdentifier": "com.tinyspeck.slackmacgap",
+  "precedingText": "Sure, I will send the ",
+  "trailingText": "",
+  "isMultiLineEnabled": true,
+  "screenText": "Maria Kovacheva  10:42\nCan you send me the Q3 budget review before Thursday?",
+  "learnedPhrases": [
+   "I will send the revised deck tomorrow morning"
+  ],
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "Q3 budget review",
+    "budget review",
+    "revised deck tomorrow morning",
+    "revised deck tomorrow"
+   ]
+  }
+ },
+ {
+  "id": "phrase-with-screen-invoice-10",
+  "tags": [
+   "phrases",
+   "screen",
+   "email",
+   "en"
+  ],
+  "applicationName": "Mail",
+  "bundleIdentifier": "com.apple.mail",
+  "precedingText": "Hi Peter,\n\nI checked and invoice 4412 ",
+  "trailingText": "",
+  "isMultiLineEnabled": true,
+  "screenText": "Peter Lang  09:12\nInvoice 4412 is overdue, can you check with finance?",
+  "learnedPhrases": [
+   "I will chase the finance team about it today"
+  ],
+  "expectation": {
+   "kind": "positive",
+   "mustShow": false,
+   "acceptable": [
+    "is overdue",
+    "is still overdue",
+    "has not been paid",
+    "was paid",
+    "is being handled"
+   ]
+  }
+ },
+ {
+  "id": "phrase-forbidden-unrelated-11",
+  "tags": [
+   "phrases",
+   "chat",
+   "en",
+   "forbidden"
+  ],
+  "applicationName": "Slack",
+  "bundleIdentifier": "com.tinyspeck.slackmacgap",
+  "precedingText": "The deploy failed because the migration ",
+  "trailingText": "",
+  "isMultiLineEnabled": true,
+  "learnedPhrases": [
+   "let me know if that works for you",
+   "Viele Grüße aus Sofia"
+  ],
+  "expectation": {
+   "kind": "forbidden",
+   "forbidden": [
+    "let me know if that works",
+    "viele grüße"
+   ]
+  }
+ },
+ {
+  "id": "phrase-forbidden-language-12",
+  "tags": [
+   "phrases",
+   "email",
+   "en",
+   "forbidden"
+  ],
+  "applicationName": "Mail",
+  "bundleIdentifier": "com.apple.mail",
+  "precedingText": "Hi Peter,\n\nThanks for the quick turnaround on the ",
+  "trailingText": "",
+  "isMultiLineEnabled": true,
+  "learnedPhrases": [
+   "Ich melde mich morgen bei dir mit den Zahlen"
+  ],
+  "expectation": {
+   "kind": "forbidden",
+   "forbidden": [
+    "ich melde mich",
+    "bei dir"
+   ]
+  }
+ },
+ {
+  "id": "phrase-no-repeat-13",
+  "tags": [
+   "phrases",
+   "chat",
+   "en",
+   "forbidden"
+  ],
+  "applicationName": "Slack",
+  "bundleIdentifier": "com.tinyspeck.slackmacgap",
+  "precedingText": "let me know if that works for you and I ",
+  "trailingText": "",
+  "isMultiLineEnabled": true,
+  "learnedPhrases": [
+   "let me know if that works for you"
+  ],
+  "expectation": {
+   "kind": "forbidden",
+   "forbidden": [
+    "let me know if that works for you"
+   ]
+  }
+ },
+ {
+  "id": "phrase-negative-duplicate-14",
+  "tags": [
+   "phrases",
+   "chat",
+   "en",
+   "negative"
+  ],
+  "applicationName": "Slack",
+  "bundleIdentifier": "com.tinyspeck.slackmacgap",
+  "precedingText": "I will send the ",
+  "trailingText": "revised deck tomorrow morning",
+  "isMultiLineEnabled": true,
+  "learnedPhrases": [
+   "I will send the revised deck tomorrow morning"
+  ],
+  "expectation": {
+   "kind": "negative",
+   "reason": "The learned phrase is already the trailing text; showing it would duplicate what follows the caret."
+  }
  }
 ]

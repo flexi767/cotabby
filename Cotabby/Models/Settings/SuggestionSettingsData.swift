@@ -49,6 +49,7 @@ struct SuggestionCompletionSettings: Equatable {
 struct SuggestionContextSettings: Equatable {
     var isClipboardContextEnabled: Bool
     var isSurfaceContextEnabled: Bool
+    var isPhraseMemoryEnabled: Bool
     var isFastModeEnabled: Bool
     var userName: String
     var customRules: [String]
@@ -267,6 +268,11 @@ extension SuggestionSettingsData {
     var isSurfaceContextEnabled: Bool {
         get { context.isSurfaceContextEnabled }
         set { context.isSurfaceContextEnabled = newValue }
+    }
+
+    var isPhraseMemoryEnabled: Bool {
+        get { context.isPhraseMemoryEnabled }
+        set { context.isPhraseMemoryEnabled = newValue }
     }
 
     var isFastModeEnabled: Bool {

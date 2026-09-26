@@ -83,6 +83,44 @@ final class BaseCompletionPromptRendererTests: XCTestCase {
         )
     }
 
+    func test_learnedPhrasesAreStatedAsHabitAndRankedAboveClipboardAndScreen() {
+        let prompt = BaseCompletionPromptRenderer.prompt(
+            prefixText: "Thanks for the ping. I will send the",
+            applicationName: "Slack",
+            userName: nil,
+            learnedPhrases: ["I will send the revised deck tomorrow", "let me know if that works"],
+            clipboardContext: "zoom link",
+            visualContextSummary: "Maria can you send the deck"
+        )
+
+        XCTAssertTrue(
+            prompt.contains(
+                "Phrases this writer reuses: I will send the revised deck tomorrow; "
+                    + "let me know if that works."
+            )
+        )
+        // Quotation marks around the phrases would invite quoted ghost text, and the label must read
+        // as a description of this person rather than an instruction a base model cannot obey.
+        XCTAssertFalse(prompt.contains("\"I will send"))
+        let phrasesIndex = prompt.range(of: "Phrases this writer reuses")!.lowerBound
+        let clipboardIndex = prompt.range(of: "On the clipboard")!.lowerBound
+        let screenIndex = prompt.range(of: "Nearby on screen")!.lowerBound
+        XCTAssertLessThan(phrasesIndex, clipboardIndex)
+        XCTAssertLessThan(clipboardIndex, screenIndex)
+        XCTAssertTrue(prompt.hasSuffix("I will send the"))
+    }
+
+    func test_noLearnedPhrasesMeansNoPhrasesLine() {
+        let prompt = BaseCompletionPromptRenderer.prompt(
+            prefixText: "I will send the",
+            applicationName: "Slack",
+            userName: nil,
+            learnedPhrases: ["   "]
+        )
+
+        XCTAssertEqual(prompt, "I will send the")
+    }
+
     func test_contextOnlyAppearsWhenSupplied() {
         let withContext = BaseCompletionPromptRenderer.prompt(
             prefixText: "Status:",

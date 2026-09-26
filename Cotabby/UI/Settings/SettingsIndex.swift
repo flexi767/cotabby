@@ -52,6 +52,7 @@ enum SettingsItem: String, CaseIterable, Identifiable {
     // Context
     case extendedContext
     case contextLivePreview
+    case learnedPhrases
     // Engine & Model
     case engine
     case appleIntelligenceAvailability
@@ -134,6 +135,7 @@ enum SettingsItem: String, CaseIterable, Identifiable {
         case .automaticallyFixTypos: return "Automatically Fix Typos"
         case .extendedContext: return "Extended Context"
         case .contextLivePreview: return "Live Preview"
+        case .learnedPhrases: return "Learned Phrases"
         case .engine: return "Engine"
         case .appleIntelligenceAvailability: return "Apple Intelligence Availability"
         case .modelStatus: return "Model Status"
@@ -210,6 +212,7 @@ enum SettingsItem: String, CaseIterable, Identifiable {
         case .automaticallyFixTypos: return "checkmark.circle"
         case .extendedContext: return "doc.text"
         case .contextLivePreview: return "text.cursor"
+        case .learnedPhrases: return "text.book.closed"
         case .engine: return "cpu"
         case .appleIntelligenceAvailability: return "apple.logo"
         case .modelStatus: return "info.circle"
@@ -263,7 +266,7 @@ enum SettingsItem: String, CaseIterable, Identifiable {
         case .length, .acceptPunctuation, .addSpaceAfterAccept, .name, .languages, .customRules,
              .hideSuggestionsOnTypo, .offerTypoCorrections, .spellingDictionaries, .automaticallyFixTypos:
             return .writing
-        case .extendedContext, .contextLivePreview:
+        case .extendedContext, .contextLivePreview, .learnedPhrases:
             return .context
         case .engine, .appleIntelligenceAvailability, .modelStatus, .selectedModel,
              .lowPowerModeAutoDisable, .powerBasedModelSwitching, .batteryModel, .pluggedInModel,
@@ -323,6 +326,7 @@ enum SettingsItem: String, CaseIterable, Identifiable {
         case .automaticallyFixTypos: return "Replace a misspelled word right after you press Space."
         case .extendedContext: return "A glossary or notes sent with every suggestion."
         case .contextLivePreview: return "A real field that exercises the full pipeline."
+        case .learnedPhrases: return "Sentences you type often, reused in suggestions."
         case .engine: return "Apple Intelligence, bundled Open Source, or a local endpoint."
         case .appleIntelligenceAvailability: return "Whether this Mac can run Apple Intelligence."
         case .modelStatus: return "Whether the local model is loaded and ready."
@@ -475,6 +479,10 @@ enum SettingsItem: String, CaseIterable, Identifiable {
         case .contextLivePreview:
             return ["live", "preview", "test", "ghost", "try", "playground", "sandbox",
                     "demo", "try it", "test field"]
+        case .learnedPhrases:
+            return ["learn", "learned", "phrases", "history", "memory", "repeat", "repeated",
+                    "habits", "my words", "forget", "typing history", "personalization",
+                    "remember", "frequent", "snippets", "sign-off"]
         case .engine:
             return ["engine", "apple intelligence", "open source", "llama", "backend",
                     "provider", "runtime", "foundation models", "oss", "local", "endpoint",

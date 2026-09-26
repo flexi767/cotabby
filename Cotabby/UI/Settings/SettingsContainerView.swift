@@ -28,6 +28,9 @@ struct SettingsContainerView: View {
 
     let onShowWelcome: () -> Void
     let clearEmojiHistory: () -> Void
+    /// Declared after the closures, not with the other stores, so this view's memberwise init keeps
+    /// the argument order its call site in `SettingsCoordinator` uses.
+    @ObservedObject var phraseMemoryStore: PhraseMemoryStore
     let onQuit: () -> Void
 
     @AppStorage("cotabbySettingsSelectedCategoryV2")
@@ -143,7 +146,10 @@ struct SettingsContainerView: View {
         case .writing:
             WritingPaneView(suggestionSettings: suggestionSettings)
         case .context:
-            ContextPaneView(suggestionSettings: suggestionSettings)
+            ContextPaneView(
+                suggestionSettings: suggestionSettings,
+                phraseMemoryStore: phraseMemoryStore
+            )
         case .shortcuts:
             ShortcutsPaneView(suggestionSettings: suggestionSettings)
         case .apps:
