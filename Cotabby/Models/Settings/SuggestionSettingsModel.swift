@@ -69,8 +69,9 @@ final class SuggestionSettingsModel: ObservableObject {
     /// When on (the default), prompts may state which app, window, domain, and field the user is
     /// typing in. See `SurfaceContextComposer` for what is actually rendered.
     @Published private(set) var isSurfaceContextEnabled: Bool
-    /// When on (the default), prompts may state phrases this writer has finished typing more than
-    /// once. The phrases live in `PhraseMemoryStore`; this only gates learning and injection.
+    /// When on, prompts may state phrases this writer has finished typing more than once. Opt-in:
+    /// off until the user asks for it. The phrases live in `PhraseMemoryStore`; this gates both the
+    /// learning and the injection, so while it is off nothing is observed or written.
     @Published private(set) var isPhraseMemoryEnabled: Bool
     @Published private(set) var isFastModeEnabled: Bool
     /// When on, a misspelled current word hides the normal continuation (see the typo gate).

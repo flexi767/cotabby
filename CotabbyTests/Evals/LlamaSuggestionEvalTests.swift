@@ -99,6 +99,9 @@ final class LlamaSuggestionEvalTests: XCTestCase {
             selectedEngine: .llamaOpenSource,
             selectedWordCountPreset: .twelveToTwenty,
             isClipboardContextEnabled: false,
+            // Explicit: phrase memory is opt-in, and a case carrying `learnedPhrases` is measuring
+            // the opted-in path.
+            isPhraseMemoryEnabled: true,
             isMultiLineEnabled: evalCase.isMultiLineEnabled
         )
         let request = SuggestionRequestFactory.buildRequest(

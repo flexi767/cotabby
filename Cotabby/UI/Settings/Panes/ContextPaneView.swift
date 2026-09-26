@@ -92,8 +92,10 @@ struct ContextPaneView: View {
                 Toggle(isOn: phraseMemoryBinding) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Learn phrases I type often")
-                        Text("When you finish a message, Cotabby remembers its sentences. A phrase " +
-                            "has to show up at least twice before it is ever used in a suggestion.")
+                        Text("Off unless you turn it on. While it is on, Cotabby remembers the " +
+                            "sentences of messages you finish; a phrase has to show up at least " +
+                            "twice before it is ever used in a suggestion. Switching it off stops " +
+                            "both the learning and the suggesting, and keeps what was already learned.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -194,6 +196,10 @@ struct ContextPaneView: View {
                         "on-device model."
                 )
                 bulletLine(
+                    "Phrase learning is off until you switch it on, and nothing is recorded while " +
+                        "it is off."
+                )
+                bulletLine(
                     "Learned phrases are never taken from password fields, terminals, or code " +
                         "editors, and anything shaped like a key, token, address, or long number " +
                         "is skipped."
@@ -215,14 +221,17 @@ struct ContextPaneView: View {
     }
 
     /// Both numbers, because they answer different questions: how much has been observed, and how
-    /// much of it has repeated often enough to actually influence a suggestion.
+    /// much of it has repeated often enough to actually influence a suggestion. The off states are
+    /// spelled out separately so an empty counter never reads as "this is broken".
     private var learnedPhraseCountLabel: String {
         let stored = phraseMemoryStore.phraseCount
+        let isEnabled = suggestionSettings.isPhraseMemoryEnabled
         guard stored > 0 else {
-            return "Nothing learned yet."
+            return isEnabled ? "Nothing learned yet." : "Nothing learned. Turn this on to start."
         }
-        return "\(stored) phrase\(stored == 1 ? "" : "s") remembered, "
+        let summary = "\(stored) phrase\(stored == 1 ? "" : "s") remembered, "
             + "\(phraseMemoryStore.eligiblePhraseCount) seen often enough to be used."
+        return isEnabled ? summary : summary + " Paused."
     }
 
     private var editorBinding: Binding<String> {

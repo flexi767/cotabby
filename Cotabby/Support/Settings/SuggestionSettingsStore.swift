@@ -319,11 +319,14 @@ struct SuggestionSettingsStore {
         // Accessibility read per field. Users who want fully context-free prompts can switch it off.
         let resolvedSurfaceContextEnabled =
             userDefaults.object(forKey: Self.surfaceContextEnabledDefaultsKey) as? Bool ?? true
-        // Defaults to true for the same reason surface context does: it costs one cached read per
-        // request, never leaves the device, and it is the only context source that knows how THIS
-        // writer words things. The phrases themselves are forgettable from Settings at any time.
+        // Defaults to FALSE, unlike the other context sources. Surface context and screen capture
+        // describe the situation and keep nothing; this one durably records the user's own sentences
+        // to disk, and a feature that starts remembering what someone writes has to be chosen rather
+        // than discovered. An absent key therefore means off — for a fresh install and equally for an
+        // existing user updating into this build — and nothing is captured or persisted until the
+        // Context pane toggle is switched on. An explicitly stored value always wins.
         let resolvedPhraseMemoryEnabled =
-            userDefaults.object(forKey: Self.phraseMemoryEnabledDefaultsKey) as? Bool ?? true
+            userDefaults.object(forKey: Self.phraseMemoryEnabledDefaultsKey) as? Bool ?? false
         // Defaults to false so the visual-context pipeline keeps running for existing users; opting
         // into fast mode turns it off.
         let resolvedFastModeEnabled =

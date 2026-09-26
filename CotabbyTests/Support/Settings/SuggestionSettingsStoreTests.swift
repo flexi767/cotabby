@@ -674,6 +674,63 @@ final class SuggestionSettingsStoreTests: XCTestCase {
     /// Each store test gets its own isolated UserDefaults so state cannot leak between cases.
     /// `removePersistentDomain` resets the in-memory suite to a clean slate before use, and the
     /// teardown block removes whatever the test persisted so suites do not accumulate on disk.
+    // MARK: - Phrase memory is opt-in
+
+    /// A fresh install has no key at all. Phrase memory must read as OFF there: it is the only
+    /// context source that durably records the user's own sentences, so it is chosen, not inherited.
+    func test_load_phraseMemoryIsOffWhenTheKeyWasNeverSet() async {
+        let defaults = makeIsolatedDefaults()
+
+        let data = SuggestionSettingsStore(userDefaults: defaults).load(configuration: .standard)
+
+        XCTAssertFalse(data.isPhraseMemoryEnabled)
+    }
+
+    /// The same absent key is what an existing user updating into this build has, so they must land
+    /// off too — a feature that starts remembering what someone writes cannot arrive switched on.
+    func test_load_phraseMemoryIsOffForAnExistingUserWithOtherSettingsStored() async {
+        let defaults = makeIsolatedDefaults()
+        // A populated domain that predates the feature: every other context key present, this one not.
+        defaults.set(true, forKey: "cotabbySurfaceContextEnabled")
+        defaults.set(true, forKey: "cotabbyClipboardContextEnabled")
+        defaults.set("Some glossary", forKey: "cotabbyExtendedContext")
+
+        let data = SuggestionSettingsStore(userDefaults: defaults).load(configuration: .standard)
+
+        XCTAssertFalse(data.isPhraseMemoryEnabled)
+        XCTAssertTrue(data.isSurfaceContextEnabled, "unrelated context settings must survive untouched")
+        XCTAssertEqual(data.extendedContext, "Some glossary")
+    }
+
+    func test_load_phraseMemoryHonoursAnExplicitChoiceInEitherDirection() async {
+        let enabledDefaults = makeIsolatedDefaults()
+        enabledDefaults.set(true, forKey: "cotabbyPhraseMemoryEnabled")
+        let disabledDefaults = makeIsolatedDefaults()
+        disabledDefaults.set(false, forKey: "cotabbyPhraseMemoryEnabled")
+
+        XCTAssertTrue(
+            SuggestionSettingsStore(userDefaults: enabledDefaults)
+                .load(configuration: .standard).isPhraseMemoryEnabled
+        )
+        XCTAssertFalse(
+            SuggestionSettingsStore(userDefaults: disabledDefaults)
+                .load(configuration: .standard).isPhraseMemoryEnabled
+        )
+    }
+
+    /// Turning the feature off must not touch the phrases already learned — the user asked to stop
+    /// learning, not to be forgotten. Only "Forget Learned Phrases" clears that key.
+    func test_savePhraseMemoryDisabledLeavesStoredPhrasesAlone() async {
+        let defaults = makeIsolatedDefaults()
+        let store = PhraseMemoryStore(defaults: defaults)
+        store.record(committedText: "let me know if that works for you", bundleIdentifier: nil)
+        store.record(committedText: "let me know if that works for you", bundleIdentifier: nil)
+
+        SuggestionSettingsStore(userDefaults: defaults).savePhraseMemoryEnabled(false)
+
+        XCTAssertEqual(PhraseMemoryStore(defaults: defaults).phraseCount, 1)
+    }
+
     private func makeIsolatedDefaults() -> UserDefaults {
         let suiteName = "cotabby.test.settingsStore.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

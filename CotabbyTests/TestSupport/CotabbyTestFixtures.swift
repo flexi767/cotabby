@@ -247,7 +247,9 @@ enum CotabbyTestFixtures {
         customWordCountRange: SuggestionWordRange = SuggestionWordRange(lowWords: 5, highWords: 15),
         isClipboardContextEnabled: Bool = true,
         isSurfaceContextEnabled: Bool = true,
-        isPhraseMemoryEnabled: Bool = true,
+        // Mirrors the shipped default (opt-in), so a suite that exercises phrase memory has to ask
+        // for it explicitly rather than inheriting it.
+        isPhraseMemoryEnabled: Bool = false,
         userName: String = "",
         customRules: [String] = [],
         extendedContext: String = "",

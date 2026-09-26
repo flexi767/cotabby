@@ -204,6 +204,64 @@ final class SuggestionCoordinatorInputTests: XCTestCase {
         XCTAssertTrue(rig.engine.requests.isEmpty)
     }
 
+    // MARK: - Phrase memory (opt-in)
+
+    /// The gate has to sit before observation, not before injection: while the feature is off,
+    /// finishing a message must leave nothing behind at all.
+    func test_phraseMemoryLearnsNothingWhileTheFeatureIsOff() {
+        let rig = retained(makeCoordinatorRig(
+            snapshot: CotabbyTestFixtures.focusedInputSnapshot(
+                precedingText: "Thanks for the update, I will send it tomorrow"
+            ),
+            settingsSnapshot: CotabbyTestFixtures.settingsSnapshot(
+                isPhraseMemoryEnabled: false,
+                debounceMilliseconds: 1
+            )
+        ))
+
+        sendTypedThenCleared(in: rig)
+
+        XCTAssertEqual(rig.coordinator.phraseMemoryStore.phraseCount, 0)
+    }
+
+    /// The same sequence with the feature on, so the gate is proven to be the only thing standing
+    /// between a finished message and the memory.
+    func test_phraseMemoryLearnsAFinishedMessageWhenTheFeatureIsOn() {
+        let rig = retained(makeCoordinatorRig(
+            snapshot: CotabbyTestFixtures.focusedInputSnapshot(
+                precedingText: "Thanks for the update, I will send it tomorrow"
+            ),
+            settingsSnapshot: CotabbyTestFixtures.settingsSnapshot(
+                isPhraseMemoryEnabled: true,
+                debounceMilliseconds: 1
+            )
+        ))
+
+        sendTypedThenCleared(in: rig)
+
+        XCTAssertEqual(rig.coordinator.phraseMemoryStore.phraseCount, 1)
+        XCTAssertEqual(
+            rig.coordinator.phraseMemoryStore.snapshot().phrases.first?.text,
+            "Thanks for the update, I will send it tomorrow"
+        )
+        // One sighting is stored but never injected, so the opt-in still shows the user nothing new
+        // until they have genuinely repeated themselves.
+        XCTAssertEqual(rig.coordinator.phraseMemoryStore.eligiblePhraseCount, 0)
+    }
+
+    /// Observes the field holding text and then emptied — the send signal the detector keys on.
+    private func sendTypedThenCleared(in rig: CoordinatorRig) {
+        let typed = rig.focusProvider.snapshot
+        rig.coordinator.handleFocusSnapshotChange(typed)
+        let cleared = FocusSnapshot(
+            applicationName: typed.applicationName,
+            bundleIdentifier: typed.bundleIdentifier,
+            capability: .supported,
+            context: CotabbyTestFixtures.focusedInputSnapshot(precedingText: "")
+        )
+        rig.coordinator.handleFocusSnapshotChange(cleared)
+    }
+
     // MARK: - Focus snapshot changes
 
     func test_focusChangeToSupportedFieldStartsVisualContextCapture() {

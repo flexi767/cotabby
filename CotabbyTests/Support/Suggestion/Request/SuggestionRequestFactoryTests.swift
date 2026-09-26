@@ -395,7 +395,7 @@ final class SuggestionRequestFactoryTests: XCTestCase {
 
         let result = SuggestionRequestFactory.buildRequest(
             context: context,
-            settings: CotabbyTestFixtures.settingsSnapshot(),
+            settings: CotabbyTestFixtures.settingsSnapshot(isPhraseMemoryEnabled: true),
             configuration: .standard,
             phraseMemory: Self.phraseMemory(
                 "I will send the revised deck tomorrow",
