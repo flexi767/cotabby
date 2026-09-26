@@ -19,6 +19,18 @@ import Foundation
 /// Both spelling checks skip capitalized words (names and brands are routinely out-of-dictionary),
 /// short words (under four letters), words with digits, and CJK text (no space-delimited word
 /// boundaries, and the dictionaries do not cover it).
+///
+/// Two narrow exceptions close holes those exemptions opened, each gated on positive evidence
+/// that the writer was typing a real word rather than a name or a code-like token:
+///
+/// - **Sentence-initial capital**: a word capitalized only because it starts a sentence is not a
+///   name. `Unfortun` + `atelly` is checked, and suppressed only when the checker's own correction
+///   begins with the letters the writer typed (`Unfortunately`). A brand the checker "corrects" to
+///   something unrelated (`Supabase` -> `Superbness`) never matches, so it still passes.
+/// - **Digit substitution**: a single digit wedged between letters inside the continuation
+///   (`congratul` + `ati0ns`, `defin` + `1tely`) is suppressed only when swapping it for the letter
+///   it resembles yields a known word. `covid19`, `base64`, `utf8`, and `gpt4o` never de-leet into
+///   dictionary words, so they still pass.
 nonisolated enum CompletionSeamGuard {
     /// One explicit spelling result keeps callers from supplying contradictory combinations such
     /// as "typo without a correction callback". The guard only needs to distinguish actionable
@@ -60,13 +72,26 @@ nonisolated enum CompletionSeamGuard {
     /// The spelling assessment is injected so the pure rule stays testable and the caller picks the
     /// backend. A single result describes the whole invariant: mid-word seams reject any typo,
     /// while newly generated words reject only correctable typos.
+    ///
+    /// `corrections` supplies the checker's single-word guesses for a word. It is only consulted for
+    /// the sentence-initial rule, and its empty default leaves that rule off, so callers that cannot
+    /// offer guesses keep the older, more permissive behavior.
     static func verdict(
         precedingText: String,
         completion: String,
-        spellingAssessment: (String) -> SpellingAssessment
+        spellingAssessment: (String) -> SpellingAssessment,
+        corrections: (String) -> [String] = { _ in [] }
     ) -> Verdict {
         if introducesJunkPunctuationRun(precedingText: precedingText, completion: completion) {
             return .junkPunctuationRun
+        }
+
+        if let substituted = digitSubstitutedSeamWord(
+            precedingText: precedingText,
+            completion: completion,
+            spellingAssessment: spellingAssessment
+        ) {
+            return .seamMisspelling(word: substituted)
         }
 
         if let seamWord = misspellingCandidateSeamWord(
@@ -74,6 +99,14 @@ nonisolated enum CompletionSeamGuard {
             completion: completion
         ), spellingAssessment(seamWord) != .known {
             return .seamMisspelling(word: seamWord)
+        }
+
+        if let candidate = sentenceInitialSeamWord(precedingText: precedingText, completion: completion),
+           spellingAssessment(candidate.word) != .known,
+           corrections(candidate.word).contains(where: { correction in
+               continuesTypedHead(correction, head: candidate.head, seamWord: candidate.word)
+           }) {
+            return .seamMisspelling(word: candidate.word)
         }
 
         if case let .candidate(leadingWord, _) = leadingWordProbe(
@@ -166,6 +199,92 @@ nonisolated enum CompletionSeamGuard {
         guard let firstCharacter = seamWord.first, firstCharacter.isLowercase else { return nil }
         guard !containsCJK(seamWord) else { return nil }
         return seamWord
+    }
+
+    /// A mid-word join whose head is capitalized only because it opens a sentence (or the text).
+    /// Returns the joined word plus the typed head, or nil when the capital could plausibly mark a
+    /// name: mid-sentence, all-caps, or camel-cased heads (`iPhone`, `McDonald`) are left alone.
+    private static func sentenceInitialSeamWord(
+        precedingText: String,
+        completion: String
+    ) -> (word: String, head: String)? {
+        guard let lastBefore = precedingText.last, lastBefore.isLetter,
+              let firstAfter = completion.first, firstAfter.isLetter
+        else { return nil }
+
+        let head = trailingLetterRun(of: precedingText)
+        let tail = leadingLetterRun(of: completion)
+        let seamWord = head + tail
+        guard head.count >= 3, seamWord.count >= minimumSeamWordLength,
+              let first = head.first, first.isUppercase,
+              !head.dropFirst().contains(where: { $0.isUppercase }),
+              !tail.contains(where: { $0.isUppercase }),
+              !containsCJK(seamWord)
+        else { return nil }
+
+        // What precedes the head, ignoring spaces, must be nothing at all, a sentence end, a
+        // newline (a new line usually starts a new sentence), or an opening quote or bracket
+        // (quoted speech opens with its own capital). Names inside quotes stay protected by the
+        // correction rule in `verdict`, not by this boundary test.
+        let beforeHead = precedingText.dropLast(head.count)
+        let significant = beforeHead.reversed().drop(while: { $0 == " " || $0 == "\t" })
+        guard let boundary = significant.first else {
+            return (seamWord, head)
+        }
+        let isSentenceStart = sentenceTerminators.contains(boundary)
+            || boundary.isNewline
+            || openingDecoration.contains(boundary)
+        return isSentenceStart ? (seamWord, head) : nil
+    }
+
+    private static let sentenceTerminators: Set<Character> = [".", "!", "?", "\u{2026}"]
+    private static let openingDecoration: Set<Character> = ["\"", "'", "(", "[", "\u{201C}", "\u{2018}", "\u{00AB}"]
+
+    /// True when a checker guess is a single word that starts with exactly what the writer typed:
+    /// the evidence that they were spelling that word and the model broke it.
+    private static func continuesTypedHead(_ correction: String, head: String, seamWord: String) -> Bool {
+        let candidate = correction.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return !candidate.contains(" ")
+            && candidate != seamWord.lowercased()
+            && candidate.hasPrefix(head.lowercased())
+    }
+
+    /// Digits that stand in for a letter they resemble, as OCR-trained and leetspeak-contaminated
+    /// models produce them (`ati0ns`, `1tely`).
+    private static let digitLookalikes: [Character: [Character]] = [
+        "0": ["o"], "1": ["i", "l"], "3": ["e"], "4": ["a"], "5": ["s"], "7": ["t"], "8": ["b"]
+    ]
+
+    /// The joined token when the continuation carries exactly one digit wedged between letters AND
+    /// replacing that digit with a lookalike letter produces a known word. The dictionary check is
+    /// what keeps real alphanumerics (`covid19`, `gpt4o`, `utf8`) out of reach: they do not de-leet
+    /// into words. The head must be three letters or more, which also spares `b2b`, `p2p`, `i18n`.
+    private static func digitSubstitutedSeamWord(
+        precedingText: String,
+        completion: String,
+        spellingAssessment: (String) -> SpellingAssessment
+    ) -> String? {
+        guard let lastBefore = precedingText.last, lastBefore.isLetter else { return nil }
+        let head = trailingLetterRun(of: precedingText)
+        guard head.count >= 3, !containsCJK(head) else { return nil }
+
+        let tail = completion.prefix(while: { $0.isLetter || $0.isNumber })
+        let characters = Array(head + tail)
+        let digitIndices = characters.indices.filter { characters[$0].isNumber }
+        guard digitIndices.count == 1, let index = digitIndices.first,
+              index > 0, index < characters.count - 1,
+              characters[index - 1].isLetter, characters[index + 1].isLetter,
+              let replacements = digitLookalikes[characters[index]]
+        else { return nil }
+
+        for replacement in replacements {
+            var repaired = characters
+            repaired[index] = replacement
+            if spellingAssessment(String(repaired)) == .known {
+                return String(characters)
+            }
+        }
+        return nil
     }
 
     private enum LeadingWordProbe {

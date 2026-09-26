@@ -804,7 +804,9 @@ extension SuggestionCoordinator {
         let seamVerdict = CompletionSeamGuard.verdict(
             precedingText: liveContext.precedingText,
             completion: result.text,
-            spellingAssessment: { self.completionSpellingAssessment(for: $0) }
+            spellingAssessment: { self.completionSpellingAssessment(for: $0) },
+            // Only consulted for a sentence-initial capitalized join, so the extra lookup is rare.
+            corrections: { self.spellChecker.nativeCorrections(for: $0) }
         )
         if seamVerdict != .allow {
             clearSuggestion()

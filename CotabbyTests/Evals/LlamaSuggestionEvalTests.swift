@@ -131,7 +131,8 @@ final class LlamaSuggestionEvalTests: XCTestCase {
                     return spellChecker.bestCorrection(for: word) == nil
                         ? .uncorrectableTypo
                         : .correctableTypo
-                }
+                },
+                corrections: { spellChecker.nativeCorrections(for: $0) }
             )
             if verdict != .allow {
                 shownText = nil

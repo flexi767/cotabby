@@ -184,6 +184,140 @@ final class CompletionSeamGuardTests: XCTestCase {
         )
     }
 
+    // MARK: - Sentence-initial capitalized joins
+
+    /// A capital that only marks a sentence start is not a name: `Unfortun` + `atelly` was exempt as
+    /// "capitalized" and reached the user. It is suppressed when the checker's own correction starts
+    /// with exactly what the writer typed.
+    func testSentenceInitialBrokenJoinIsSuppressedWhenACorrectionContinuesTheTypedHead() {
+        XCTAssertEqual(
+            CompletionSeamGuard.verdict(
+                precedingText: "Thanks. Unfortun",
+                completion: "atelly, I can't",
+                spellingAssessment: knowsNothing,
+                corrections: { _ in ["Unfortunately"] }
+            ),
+            .seamMisspelling(word: "Unfortunatelly")
+        )
+    }
+
+    func testTextStartAndNewlineAndOpeningQuoteCountAsSentenceStarts() {
+        for precedingText in ["Unfortun", "Hi Maria,\nUnfortun", "She said \"Unfortun"] {
+            XCTAssertEqual(
+                CompletionSeamGuard.verdict(
+                    precedingText: precedingText,
+                    completion: "atelly",
+                    spellingAssessment: knowsNothing,
+                    corrections: { _ in ["Unfortunately"] }
+                ),
+                .seamMisspelling(word: "Unfortunatelly"),
+                precedingText
+            )
+        }
+    }
+
+    /// Brands and surnames at a sentence start: the checker "corrects" them to unrelated words
+    /// (`Supabase` -> `Superbness`), which never begin with the typed head, so they still pass.
+    func testSentenceInitialNameIsAllowedWhenNoCorrectionContinuesTheTypedHead() {
+        XCTAssertEqual(
+            CompletionSeamGuard.verdict(
+                precedingText: "Supab",
+                completion: "ase is down",
+                spellingAssessment: knowsNothing,
+                corrections: { _ in ["Superbness", "Sup-abase"] }
+            ),
+            .allow
+        )
+    }
+
+    /// Callers that cannot supply guesses keep the older behavior: capitalized joins pass.
+    func testSentenceInitialRuleIsOffWithoutCorrections() {
+        XCTAssertEqual(
+            CompletionSeamGuard.verdict(
+                precedingText: "Unfortun",
+                completion: "atelly",
+                spellingAssessment: knowsNothing
+            ),
+            .allow
+        )
+    }
+
+    func testMidSentenceCapitalizedJoinStaysExemptEvenWithAMatchingCorrection() {
+        XCTAssertEqual(
+            CompletionSeamGuard.verdict(
+                precedingText: "Ask Unfortun",
+                completion: "atelly",
+                spellingAssessment: knowsNothing,
+                corrections: { _ in ["Unfortunately"] }
+            ),
+            .allow
+        )
+    }
+
+    /// A sentence-initial head with an inner capital (`McDon`) or in all caps (`NAS`) reads as a name
+    /// or acronym, so the sentence-initial rule leaves it alone even when a correction matches.
+    func testInnerCapitalOrAllCapsHeadsStayExempt() {
+        for (precedingText, completion) in [("McDon", "ald called"), ("NAS", "A launch")] {
+            XCTAssertEqual(
+                CompletionSeamGuard.verdict(
+                    precedingText: precedingText,
+                    completion: completion,
+                    spellingAssessment: knowsNothing,
+                    corrections: { _ in ["McDonald", "NASA"] }
+                ),
+                .allow,
+                precedingText
+            )
+        }
+    }
+
+    // MARK: - Digit substitution inside the join
+
+    /// A single digit wedged between letters used to cut the checked word short (`congratulati` is
+    /// "known"), so `congratul` + `ati0ns` reached the user.
+    func testDigitSubstitutedJoinIsSuppressedWhenItDeLeetsIntoAWord() {
+        XCTAssertEqual(
+            CompletionSeamGuard.verdict(
+                precedingText: "congratul",
+                completion: "ati0ns, you did it",
+                spellingAssessment: knowing(["congratulations"])
+            ),
+            .seamMisspelling(word: "congratulati0ns")
+        )
+    }
+
+    func testDigitRightAtTheSeamIsSuppressedWhenItDeLeetsIntoAWord() {
+        XCTAssertEqual(
+            CompletionSeamGuard.verdict(
+                precedingText: "defin",
+                completion: "1tely yes",
+                spellingAssessment: knowing(["definitely"])
+            ),
+            .seamMisspelling(word: "defin1tely")
+        )
+    }
+
+    /// Real alphanumerics never de-leet into a dictionary word, or fall outside the one-wedged-digit
+    /// shape, or have too short a head — so they keep passing even against a dictionary that knows
+    /// every ordinary word involved.
+    func testRealAlphanumericsAreAllowed() {
+        let dictionary = knowing(["covid", "base", "utf", "gpt", "win", "html", "cases", "encoded"])
+        for (precedingText, completion) in [
+            ("covi", "d19 cases"), ("base", "64 encoded"), ("utf", "8 bytes"), ("gpt", "4o model"),
+            ("b", "2b sales"), ("i", "18n strings"), ("html", "5 canvas"), ("win", "10s machines")
+        ] {
+            XCTAssertEqual(
+                CompletionSeamGuard.verdict(
+                    precedingText: precedingText,
+                    completion: completion,
+                    spellingAssessment: dictionary
+                ),
+                .allow,
+                precedingText + "|" + completion
+            )
+        }
+    }
+
     func testCJKSeamIsAllowed() {
         XCTAssertEqual(
             CompletionSeamGuard.verdict(
