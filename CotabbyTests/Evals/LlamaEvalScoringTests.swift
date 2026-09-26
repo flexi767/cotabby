@@ -99,6 +99,56 @@ final class LlamaEvalScoringTests: XCTestCase {
         XCTAssertEqual(LlamaEvalScorer.outcome(shownText: nil, for: forbidden), .correctSuppression)
     }
 
+    // MARK: - Mid-word joins
+
+    private func midwordCase(_ precedingText: String, acceptable: [String]) -> LlamaEvalCase {
+        LlamaEvalCase(
+            id: "midword",
+            tags: ["midword", "en"],
+            precedingText: precedingText,
+            expectation: LlamaEvalExpectation(kind: .positive, acceptable: acceptable)
+        )
+    }
+
+    /// `matches` folds punctuation and spacing away, so these used to score as correct although the
+    /// user would see "beauti-ful.", "beauti ful", and "Unfortun'ately".
+    func testMidWordContinuationOpeningWithPunctuationOrSpaceIsWrong() {
+        for shown in ["-ful.", " ful", "'ful"] {
+            XCTAssertEqual(
+                LlamaEvalScorer.outcome(shownText: shown, for: midwordCase("beauti", acceptable: ["ful"])),
+                .wrongShown,
+                shown
+            )
+        }
+    }
+
+    func testCleanMidWordContinuationIsStillCorrect() {
+        XCTAssertEqual(
+            LlamaEvalScorer.outcome(shownText: "ful.", for: midwordCase("beauti", acceptable: ["ful"])),
+            .correctInsert
+        )
+    }
+
+    /// A reference that itself opens with a connector keeps that shape legitimate.
+    func testMidWordReferenceOpeningWithAnApostropheStillMatches() {
+        XCTAssertEqual(
+            LlamaEvalScorer.outcome(shownText: "'t know", for: midwordCase("I don", acceptable: ["'t know"])),
+            .correctInsert
+        )
+    }
+
+    /// Only cases tagged `midword` get the rule: `see you` also ends in a letter, and there a
+    /// leading space before the next word is exactly right.
+    func testUntaggedCaseEndingInALetterKeepsItsLeadingSpace() {
+        let nextWord = LlamaEvalCase(
+            id: "next-word",
+            tags: ["chat"],
+            precedingText: "see you",
+            expectation: LlamaEvalExpectation(kind: .positive, acceptable: ["tomorrow"])
+        )
+        XCTAssertEqual(LlamaEvalScorer.outcome(shownText: " tomorrow", for: nextWord), .correctInsert)
+    }
+
     func testScoresMatchTheNonNegativeTaxonomy() {
         XCTAssertEqual(LlamaEvalOutcome.correctInsert.score, 1.0)
         XCTAssertEqual(LlamaEvalOutcome.correctSuppression.score, 1.0)

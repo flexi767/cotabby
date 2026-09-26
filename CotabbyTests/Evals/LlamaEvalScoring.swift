@@ -152,6 +152,9 @@ enum LlamaEvalScorer {
             guard let shown = shownText, !shown.isEmpty else {
                 return evalCase.expectation.mustShow ? .missedShow : .acceptableSuppression
             }
+            if breaksTheWordAtTheCaret(shown: shown, for: evalCase) {
+                return .wrongShown
+            }
             return matches(shown: shown, acceptable: evalCase.expectation.acceptable)
                 ? .correctInsert
                 : .wrongShown
@@ -163,6 +166,23 @@ enum LlamaEvalScorer {
             let violates = evalCase.expectation.forbidden.contains { lowered.contains($0.lowercased()) }
             return violates ? .wrongShown : .correctInsert
         }
+    }
+
+    /// True for a case tagged `midword` (the caret sits inside an unfinished word) whose references
+    /// all continue that word with a letter, when the shown text instead opens with something else —
+    /// a space, hyphen, apostrophe, or other punctuation. `matches` folds punctuation and whitespace
+    /// away per word, so without this check `beauti` + `-ful.` (the user would see "beauti-ful.") and
+    /// `beauti` + ` ful` scored as correct. Keyed on the tag, not on "text ends in a letter", because
+    /// `see you` + ` tomorrow` also ends in a letter and there the leading space is right. A reference
+    /// that itself opens with a connector (`don` + `'t`) keeps that shape legitimate.
+    static func breaksTheWordAtTheCaret(shown: String, for evalCase: LlamaEvalCase) -> Bool {
+        guard evalCase.tags.contains("midword"),
+              evalCase.precedingText.last?.isLetter == true,
+              let firstShown = shown.first, !firstShown.isLetter else {
+            return false
+        }
+        let references = evalCase.expectation.acceptable.filter { !$0.isEmpty }
+        return !references.isEmpty && references.allSatisfy { $0.first?.isLetter == true }
     }
 
     /// Word-boundary prefix match in either direction: the shown text may extend a reference
