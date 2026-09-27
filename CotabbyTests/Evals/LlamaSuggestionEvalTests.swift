@@ -20,9 +20,9 @@ import XCTest
 /// correctness (testability must be forced on because Release builds disable it, and this file
 /// `@testable import`s the app).
 ///
-/// The model comes from the app's own runtime directory (`~/Library/Application Support/Cotabby/
-/// LlamaRuntime/`, resolved through `BundledRuntimeLocator` because the test host IS Cotabby.app),
-/// so whichever catalog model the app would load is what gets measured. The suite skips with a
+/// The model comes from the installed app's runtime directory (`~/Library/Application Support/
+/// Cotabby/LlamaRuntime/`), passed explicitly because the test host is the separate "Cotabby Test
+/// Host" identity, so whichever catalog model the app would load is what gets measured. The suite skips with a
 /// hint when no model is downloaded.
 ///
 /// Scoring is non-negative (correct suppression scores like a correct insert) so "suppress
@@ -33,7 +33,20 @@ import XCTest
 final class LlamaSuggestionEvalTests: XCTestCase {
     func test_reportEvalSuite() async throws {
         #if RUN_LLAMA_EVAL
-        let manager = LlamaRuntimeManager()
+        // The tests run in the "Cotabby Test Host" identity, whose own Application Support folder
+        // holds no models. Point the runtime at the installed app's model folder explicitly so the
+        // eval keeps measuring the model the app actually loads, without copying multi-GB files.
+        let defaults = LlamaRuntimeConfiguration.default
+        let manager = LlamaRuntimeManager(
+            configuration: LlamaRuntimeConfiguration(
+                runtimeDirectoryPath: Self.installedAppRuntimeDirectory().path,
+                preferredModelNames: defaults.preferredModelNames,
+                contextWindowTokens: defaults.contextWindowTokens,
+                batchSize: defaults.batchSize,
+                gpuLayerCount: defaults.gpuLayerCount
+            ),
+            runtimeLocator: BundledRuntimeLocator()
+        )
         do {
             try await manager.prepare()
         } catch {
@@ -187,6 +200,14 @@ final class LlamaSuggestionEvalTests: XCTestCase {
         })
     }
 
+    /// `~/Library/Application Support/Cotabby/LlamaRuntime`: the folder the installed `Cotabby.app`
+    /// downloads into (the locator names it after `CFBundleName`, which is "Cotabby" there).
+    private static func installedAppRuntimeDirectory() -> URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Cotabby", isDirectory: true)
+            .appendingPathComponent(BundledRuntimeLocator.runtimeFolderName, isDirectory: true)
+    }
+
     private static func loadCases() throws -> [LlamaEvalCase] {
         guard let url = Bundle(for: LlamaSuggestionEvalTests.self)
             .url(forResource: "llama-eval-cases", withExtension: "json") else {
@@ -198,7 +219,8 @@ final class LlamaSuggestionEvalTests: XCTestCase {
     /// The model file the runtime locator would pick, for the report header. Mirrors the
     /// preferred-name-first resolution without reaching into the manager's internals.
     private static func modelLabel() -> String {
-        let directory = BundledRuntimeLocator.userRuntimeDirectoryURL()
+        // Same folder the runtime was pointed at above, not the test host's own (empty) one.
+        let directory = installedAppRuntimeDirectory()
         let discovered = BundledRuntimeLocator.discoverGGUFModelURLs(in: directory)
             .map(\.lastPathComponent)
         for preferred in LlamaRuntimeConfiguration.default.preferredModelNames

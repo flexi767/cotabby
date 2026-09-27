@@ -174,6 +174,21 @@ targets:
         # and replace itself with the released bundle, the exact identity collapse this target exists
         # to prevent.
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: COTABBY_DEV $(inherited)
+  # Unit-test host. Same sources and the same compilation conditions as the prod `Cotabby` target,
+  # so every test exercises exactly the code it did before; only the identity differs. Hosting the
+  # tests in the prod-identity app meant each `xcodebuild test` launched `com.jacobfu.tabby` and
+  # wrote resolved settings (any newly added setting key) into the installed app's own defaults
+  # domain, and its Keychain service, and re-registered a stray prod-identity app with
+  # LaunchServices. Under its own bundle identifier the test host has its own defaults domain and
+  # Keychain service, and there is nothing of the installed app's left for a test run to touch.
+  "Cotabby Test Host":
+    templates:
+      - CotabbyApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jacobfu.tabby.testhost
+        # The tests `@testable import Cotabby`; keep the host's module name identical to prod's.
+        PRODUCT_MODULE_NAME: Cotabby
   CotabbyTests:
     type: bundle.unit-test
     platform: macOS
@@ -181,7 +196,7 @@ targets:
     sources:
       - path: CotabbyTests
     dependencies:
-      - target: Cotabby
+      - target: "Cotabby Test Host"
     settings:
       base:
         BUNDLE_LOADER: $(TEST_HOST)
@@ -200,12 +215,14 @@ targets:
         SDKROOT: macosx
         SWIFT_OBJC_INTEROP_MODE: objcxx
         SWIFT_VERSION: "5.0"
-        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Cotabby.app/Contents/MacOS/Cotabby
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Cotabby Test Host.app/Contents/MacOS/Cotabby Test Host"
 schemes:
   Cotabby:
     build:
       targets:
-        Cotabby: all
+        # Not built for the test action: tests are hosted in "Cotabby Test Host", which compiles the
+        # same `Cotabby` module, and building both in one graph would emit that module twice.
+        Cotabby: [running, profiling, analyzing, archiving]
     run:
       config: Debug
       commandLineArguments:
@@ -222,8 +239,8 @@ schemes:
     archive:
       config: Release
   # Daily-driver scheme. Builds the dev-identity target so running from Xcode never touches the
-  # released app's permissions. No test action here: CotabbyTests is bound to the prod `Cotabby`
-  # target (its TEST_HOST points at "Cotabby.app"), so tests continue to run from the Cotabby scheme.
+  # released app's permissions. No test action here: tests keep running from the Cotabby scheme,
+  # hosted in the separate "Cotabby Test Host" identity rather than in either real app.
   "Cotabby Dev":
     build:
       targets:

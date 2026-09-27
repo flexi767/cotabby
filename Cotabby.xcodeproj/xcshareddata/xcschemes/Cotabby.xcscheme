@@ -8,7 +8,7 @@
       runPostActionsOnFailure = "NO">
       <BuildActionEntries>
          <BuildActionEntry
-            buildForTesting = "YES"
+            buildForTesting = "NO"
             buildForRunning = "YES"
             buildForProfiling = "YES"
             buildForArchiving = "YES"
@@ -32,9 +32,9 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "622CFE93F0FE48C8243E060C"
-            BuildableName = "Cotabby.app"
-            BlueprintName = "Cotabby"
+            BlueprintIdentifier = "AB3DFA4CFA5EBC6161F02A30"
+            BuildableName = "CotabbyTests.xctest"
+            BlueprintName = "CotabbyTests"
             ReferencedContainer = "container:Cotabby.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
