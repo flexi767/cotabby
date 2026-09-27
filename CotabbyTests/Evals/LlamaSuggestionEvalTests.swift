@@ -110,7 +110,11 @@ final class LlamaSuggestionEvalTests: XCTestCase {
         )
         let settings = CotabbyTestFixtures.settingsSnapshot(
             selectedEngine: .llamaOpenSource,
-            selectedWordCountPreset: .twelveToTwenty,
+            // Match the length the writer actually uses (Cotabby Dev runs the 2-4 word preset).
+            // Every score before this was measured at 12-20 words, a setting nobody here types with;
+            // length changes the token budget, the stop policy, and what a short suggestion can get
+            // right or wrong, so the eval has to ask for the same length the app does.
+            selectedWordCountPreset: .twoToFour,
             isClipboardContextEnabled: false,
             // Explicit: phrase memory is opt-in, and a case carrying `learnedPhrases` is measuring
             // the opted-in path.
