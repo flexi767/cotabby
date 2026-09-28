@@ -11,22 +11,24 @@ final class VisualContextCoordinator {
     /// without taking back ownership of the visual-context task lifecycle.
     var onStateChange: ((VisualContextStatus, String?) -> Void)?
     var onInjectedContextReady: ((FocusedInputIdentity) -> Void)?
+    var refreshContextProvider: (() -> FocusedInputSnapshot?)?
 
-    private let screenshotContextGenerator: ScreenshotContextGenerator
+    private let screenshotContextGenerator: any ScreenshotContextGenerating
     private let screenRecordingPermissionProvider: @MainActor () -> Bool
+    private let refreshIntervalNanoseconds: UInt64
+    private let excerptLifetimeNanoseconds: UInt64
+    private let now: () -> TimeInterval
+    private var configuration = VisualContextConfiguration.default
+    private var refreshTask: Task<Void, Never>?
+    private var expiryTask: Task<Void, Never>?
+    private var excerptCapturedAt: TimeInterval?
+    private var activeSessionIdentity: FocusedInputSessionIdentity?
 
     private(set) var status: VisualContextStatus = .idle
     private(set) var latestExcerpt: String?
 
     private var activeAugmentationSession: FocusedInputAugmentationSession?
     private var visualContextTask: Task<Void, Never>?
-    /// In-flight refresh for the field already being tracked, kept separate from
-    /// `visualContextTask` so a refresh can never be mistaken for an initial capture.
-    private var refreshTask: Task<Void, Never>?
-    /// When the excerpt in `activeAugmentationSession` was produced, or when the last refresh
-    /// attempt finished. Drives the staleness check, and is advanced even on failure so a screen
-    /// that cannot be captured does not get re-attempted on every keystroke.
-    private var lastExcerptAttemptAt: Date?
 
     /// Debounce state for the capture pipeline. `pendingStartContext` is the field whose start is
     /// currently waiting out the settle delay; a matching repeat call is ignored so a churning focus
@@ -35,30 +37,21 @@ final class VisualContextCoordinator {
     private var pendingStartContext: FocusedInputSnapshot?
     private static let sessionStartSettleNanoseconds: UInt64 = 250_000_000
 
-    /// Minimum age before the excerpt for a still-focused field is recaptured.
-    ///
-    /// The excerpt used to be captured once, when the field was focused, and then never again — so
-    /// anything that arrived, scrolled, or was revealed while the writer was typing their reply was
-    /// invisible to the model, which is the opposite of how replying works. Eight seconds is chosen
-    /// against the cost, not the conversation: `ScreenshotContextGenerator` hashes the captured
-    /// pixels and reuses the previous OCR when they have not changed, so a refresh over a static
-    /// screen skips the Vision pass (the expensive half) and only pays one window capture.
-    static let defaultRefreshStalenessInterval: TimeInterval = 8
-    private let refreshStalenessInterval: TimeInterval
-
     private static let permissionMissingReason =
         "Screen Recording permission is required for screenshot-derived prompt context."
 
     init(
-        screenshotContextGenerator: ScreenshotContextGenerator,
+        screenshotContextGenerator: any ScreenshotContextGenerating,
         screenRecordingPermissionProvider: @escaping @MainActor () -> Bool,
-        // Injectable so tests can make an excerpt stale immediately instead of waiting out the real
-        // interval. Production always uses the default.
-        refreshStalenessInterval: TimeInterval = defaultRefreshStalenessInterval
+        refreshIntervalNanoseconds: UInt64 = 3_000_000_000,
+        excerptLifetimeNanoseconds: UInt64 = 6_000_000_000,
+        now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     ) {
         self.screenshotContextGenerator = screenshotContextGenerator
         self.screenRecordingPermissionProvider = screenRecordingPermissionProvider
-        self.refreshStalenessInterval = refreshStalenessInterval
+        self.refreshIntervalNanoseconds = refreshIntervalNanoseconds
+        self.excerptLifetimeNanoseconds = excerptLifetimeNanoseconds
+        self.now = now
     }
 
     /// Starts one screenshot-derived augmentation session per focused field.
@@ -69,7 +62,24 @@ final class VisualContextCoordinator {
     /// `elementIdentifier` alone is unreliable because macOS can recycle `CFHash` values
     /// across unrelated AX elements. The monotonic `focusChangeSequence` counter provides a
     /// guaranteed-unique signal that the focus tracker actually observed a new element.
-    func startSessionIfNeeded(for snapshotContext: FocusedInputSnapshot) {
+    func startSessionIfNeeded(
+        for snapshotContext: FocusedInputSnapshot,
+        configuration: VisualContextConfiguration = .default
+    ) {
+        guard !snapshotContext.isSecure else {
+            cancel(resetState: true)
+            return
+        }
+        if self.configuration != configuration {
+            cancel(resetState: true)
+            self.configuration = configuration
+        }
+        // Surface facts can change even when an app reuses its composer and AX handle. Drop the
+        // old excerpt synchronously; the settle delay below must never expose another chat's text.
+        if let previous = activeSessionIdentity ?? pendingStartContext?.sessionIdentity,
+           previous != snapshotContext.sessionIdentity {
+            cancel(resetState: true)
+        }
         // Coalesce repeated calls for the same field (active or already pending) so a flapping focus
         // can't restart the pipeline. The decision is pure so the invariants stay unit-testable.
         let incoming = VisualContextFieldIdentity(
@@ -101,7 +111,7 @@ final class VisualContextCoordinator {
         // flap the focused AX element (lose and re-acquire it), calling this repeatedly with a
         // churning focusChangeSequence. Coalescing (above) plus a short settle window runs the
         // pipeline once focus is stable instead of once per flap — the retrigger storm in #280.
-        cancel(resetState: false)
+        cancel(resetState: true)
         scheduleSessionStart(for: snapshotContext)
     }
 
@@ -147,6 +157,7 @@ final class VisualContextCoordinator {
         )
 
         activeAugmentationSession = session
+        activeSessionIdentity = snapshotContext.sessionIdentity
         latestExcerpt = nil
         status = initialStatus
         publishState()
@@ -155,31 +166,58 @@ final class VisualContextCoordinator {
             return
         }
 
+        var captureContext = snapshotContext
+        if let provider = refreshContextProvider {
+            let currentContext = provider()
+            guard !Task.isCancelled, activeAugmentationSession?.sessionID == session.sessionID else { return }
+            guard screenRecordingPermissionProvider(), let currentContext,
+                  currentContext.identity == snapshotContext.identity,
+                  currentContext.sessionIdentity == snapshotContext.sessionIdentity, !currentContext.isSecure else {
+                cancel(resetState: true)
+                return
+            }
+            captureContext = currentContext
+        }
+        capture(context: captureContext, session: session)
+    }
+
+    /// Keep the last ready excerpt usable during refresh. Capture and OCR never gate generation;
+    /// only a completed, still-current result can replace the context used by subsequent requests.
+    private func capture(context snapshotContext: FocusedInputSnapshot, session: FocusedInputAugmentationSession) {
+        // Age starts before capture, not after OCR: a slow result cannot renew old pixels.
+        let capturedAt = now()
         visualContextTask = Task { [weak self] in
             guard let self else {
                 return
             }
-            // Release the handle when the capture finishes, whatever the outcome. It used to stay set
-            // for the life of the session, which reads as "a capture is still in flight" — and that is
-            // exactly the condition `refreshIfStale` refuses to interrupt, so no excerpt would ever
-            // have been refreshed.
-            defer { self.clearCaptureTask(for: session.sessionID) }
 
             do {
                 let excerpt = try await screenshotContextGenerator.generateContext(
                     for: snapshotContext,
+                    configuration: configuration,
                     onStatusChange: { [weak self] status in
-                        await self?.setStatus(status, for: session.sessionID)
+                        self?.setStatus(status, for: session.sessionID)
                     }
                 )
                 guard !Task.isCancelled else {
                     return
                 }
+                if let provider = refreshContextProvider {
+                    let liveContext = provider()
+                    guard activeAugmentationSession?.sessionID == session.sessionID else { return }
+                    guard screenRecordingPermissionProvider(), liveContext?.identity == snapshotContext.identity,
+                          liveContext?.sessionIdentity == snapshotContext.sessionIdentity,
+                          liveContext?.isSecure == false else {
+                        cancel(resetState: true)
+                        return
+                    }
+                }
 
                 applyExcerpt(
                     excerpt,
                     for: session.sessionID,
-                    identity: snapshotContext.identity
+                    identity: snapshotContext.identity,
+                    capturedAt: capturedAt
                 )
             } catch is CancellationError {
                 CotabbyLogger.app.debug("Visual context generation cancelled")
@@ -191,60 +229,37 @@ final class VisualContextCoordinator {
                 CotabbyLogger.app.error("Visual context generation failed: \(error.localizedDescription)")
                 setStatus(.failed(error.localizedDescription), for: session.sessionID)
             }
+            guard !Task.isCancelled, activeAugmentationSession?.sessionID == session.sessionID else { return }
+            visualContextTask = nil
+            scheduleRefresh(sessionID: session.sessionID)
         }
     }
 
-    /// Recaptures the screen for the field already being tracked, but only when the current excerpt
-    /// has aged past `refreshStalenessInterval`.
-    ///
-    /// Additive by construction: the ready excerpt and `.ready` status stay in place for the whole
-    /// refresh, so requests built while it runs still carry the previous screen text. A successful
-    /// capture swaps the excerpt in and reports readiness again, which reschedules the current
-    /// prediction through the same path an initial capture uses. A failed one changes nothing.
-    func refreshIfStale(for snapshotContext: FocusedInputSnapshot) {
-        guard screenRecordingPermissionProvider() else { return }
-        guard refreshTask == nil, visualContextTask == nil, pendingStartTask == nil else { return }
-        guard let session = activeAugmentationSession,
-              session.status == .ready,
-              session.elementIdentifier == snapshotContext.elementIdentifier,
-              session.focusChangeSequence == snapshotContext.focusChangeSequence else { return }
-        guard let lastAttempt = lastExcerptAttemptAt,
-              Date().timeIntervalSince(lastAttempt) >= refreshStalenessInterval else { return }
-
-        let sessionID = session.sessionID
+    /// One timer per field, rearmed only after capture completes: slow OCR cannot accumulate jobs.
+    /// Refresh uses the same engine-specific crop and limits as the initial capture. In particular,
+    /// enabling endpoint refresh does not widen what can reach a network request.
+    private func scheduleRefresh(sessionID: UUID) {
+        guard refreshContextProvider != nil else { return }
+        let delay = refreshIntervalNanoseconds
         refreshTask = Task { [weak self] in
-            guard let self else { return }
-            defer { self.finishRefresh(for: sessionID) }
-            do {
-                // No `onStatusChange`: a published `.capturing` would make `excerpt(for:)` return nil
-                // and silently drop screen context from every request until the refresh landed.
-                let excerpt = try await self.screenshotContextGenerator.generateContext(
-                    for: snapshotContext,
-                    onStatusChange: nil
-                )
-                guard !Task.isCancelled else { return }
-                self.applyExcerpt(excerpt, for: sessionID, identity: snapshotContext.identity)
-            } catch is CancellationError {
+            do { try await Task.sleep(nanoseconds: delay) } catch { return }
+            guard let self, !Task.isCancelled,
+                  let session = self.activeAugmentationSession, session.sessionID == sessionID else { return }
+            let liveContext = self.refreshContextProvider?()
+            // Refreshing AX can synchronously publish a different field and start its session.
+            // Never cancel that replacement on behalf of this old timer.
+            guard self.activeAugmentationSession?.sessionID == sessionID else { return }
+            guard self.screenRecordingPermissionProvider(),
+                  let context = liveContext,
+                  context.elementIdentifier == session.elementIdentifier,
+                  context.focusChangeSequence == session.focusChangeSequence,
+                  context.sessionIdentity == self.activeSessionIdentity,
+                  !context.isSecure else {
+                self.cancel(resetState: true)
                 return
-            } catch {
-                // Keep the excerpt we already have. A window that briefly cannot be captured (a
-                // Space switch, a fullscreen transition) is not a reason to lose working context.
-                CotabbyLogger.app.debug("Visual context refresh skipped: \(error.localizedDescription)")
             }
+            self.capture(context: context, session: session)
         }
-    }
-
-    /// Drops the finished initial-capture handle, unless a newer session has already replaced it.
-    private func clearCaptureTask(for sessionID: UUID) {
-        guard activeAugmentationSession?.sessionID == sessionID else { return }
-        visualContextTask = nil
-    }
-
-    /// Clears the refresh slot and re-arms the staleness clock, whatever the outcome was.
-    private func finishRefresh(for sessionID: UUID) {
-        refreshTask = nil
-        guard activeAugmentationSession?.sessionID == sessionID else { return }
-        lastExcerptAttemptAt = Date()
     }
 
     /// Clears screenshot-derived context state and cancels any in-flight capture/OCR work.
@@ -252,14 +267,17 @@ final class VisualContextCoordinator {
     /// 1. Fully returning the service to `.idle`
     /// 2. Silently tearing down a prior session because a replacement session is about to start
     func cancel(resetState: Bool) {
+        expiryTask?.cancel()
+        expiryTask = nil
+        excerptCapturedAt = nil
+        activeSessionIdentity = nil
+        refreshTask?.cancel()
+        refreshTask = nil
         pendingStartTask?.cancel()
         pendingStartTask = nil
         pendingStartContext = nil
         visualContextTask?.cancel()
         visualContextTask = nil
-        refreshTask?.cancel()
-        refreshTask = nil
-        lastExcerptAttemptAt = nil
         activeAugmentationSession = nil
         latestExcerpt = nil
 
@@ -272,7 +290,9 @@ final class VisualContextCoordinator {
     /// Returns the ready visual-context excerpt for the provided focused input, if the current
     /// visual-context session still belongs to that same field.
     func excerpt(for context: FocusedInputContext) -> String? {
+        expireExcerptIfNeeded()
         guard let activeAugmentationSession,
+            activeSessionIdentity == context.sessionIdentity,
             activeAugmentationSession.elementIdentifier == context.elementIdentifier,
             activeAugmentationSession.focusChangeSequence == context.focusChangeSequence,
             activeAugmentationSession.status == .ready
@@ -290,6 +310,22 @@ final class VisualContextCoordinator {
             return
         }
 
+        if activeAugmentationSession?.excerpt != nil, status == .capturing || status == .extractingText {
+            return
+        }
+        // Failed/blank captures must not leave an old conversation masquerading as current context.
+        if case .unavailable = status {
+            activeAugmentationSession?.excerpt = nil
+            latestExcerpt = nil
+        } else if case .failed = status {
+            activeAugmentationSession?.excerpt = nil
+            latestExcerpt = nil
+        }
+        if latestExcerpt == nil {
+            excerptCapturedAt = nil
+            expiryTask?.cancel()
+            expiryTask = nil
+        }
         activeAugmentationSession?.status = status
         self.status = status
         publishState()
@@ -299,7 +335,8 @@ final class VisualContextCoordinator {
     private func applyExcerpt(
         _ excerpt: VisualContextExcerpt,
         for sessionID: UUID,
-        identity: FocusedInputIdentity
+        identity: FocusedInputIdentity,
+        capturedAt: TimeInterval
     ) {
         guard activeAugmentationSession?.sessionID == sessionID,
             activeAugmentationSession?.elementIdentifier == identity.elementIdentifier,
@@ -308,14 +345,40 @@ final class VisualContextCoordinator {
             return
         }
 
+        guard now() - capturedAt < Double(excerptLifetimeNanoseconds) / 1_000_000_000 else {
+            setStatus(.unavailable("Screen context expired before recognition completed."), for: sessionID)
+            return
+        }
+
+        let changed = activeAugmentationSession?.excerpt?.text != excerpt.text
         activeAugmentationSession?.status = .ready
         activeAugmentationSession?.excerpt = excerpt
         status = .ready
         latestExcerpt = excerpt.text
-        lastExcerptAttemptAt = Date()
+        excerptCapturedAt = capturedAt
+        scheduleExpiry(sessionID: sessionID, capturedAt: capturedAt)
         CotabbyLogger.app.debug("Visual context ready: \(excerpt.text.count) chars")
         publishState()
-        onInjectedContextReady?(identity)
+        if changed { onInjectedContextReady?(identity) }
+    }
+
+    /// Timer-driven expiry updates the UI and request-driven expiry covers a delayed timer. Both
+    /// use monotonic uptime so changing the system clock cannot extend an excerpt's lifetime.
+    private func expireExcerptIfNeeded() {
+        guard let capturedAt = excerptCapturedAt, let session = activeAugmentationSession,
+              now() - capturedAt >= Double(excerptLifetimeNanoseconds) / 1_000_000_000 else { return }
+        setStatus(.unavailable("Screen context expired; waiting for a fresh capture."), for: session.sessionID)
+    }
+
+    private func scheduleExpiry(sessionID: UUID, capturedAt: TimeInterval) {
+        expiryTask?.cancel()
+        let remaining = max(0, Double(excerptLifetimeNanoseconds) / 1_000_000_000 - (now() - capturedAt))
+        expiryTask = Task { [weak self] in
+            do { try await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000)) } catch { return }
+            guard let self, self.activeAugmentationSession?.sessionID == sessionID,
+                  self.excerptCapturedAt == capturedAt else { return }
+            self.expireExcerptIfNeeded()
+        }
     }
 
     private func errorStatus(for error: ScreenshotContextGenerationError) -> VisualContextStatus {

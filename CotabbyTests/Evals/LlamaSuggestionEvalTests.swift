@@ -33,28 +33,17 @@ import XCTest
 final class LlamaSuggestionEvalTests: XCTestCase {
     func test_reportEvalSuite() async throws {
         #if RUN_LLAMA_EVAL
-        // The tests run in the "Cotabby Test Host" identity, whose own Application Support folder
-        // holds no models. Point the runtime at the installed app's model folder explicitly so the
-        // eval keeps measuring the model the app actually loads, without copying multi-GB files.
-        let defaults = LlamaRuntimeConfiguration.default
-        let manager = LlamaRuntimeManager(
-            configuration: LlamaRuntimeConfiguration(
-                runtimeDirectoryPath: Self.installedAppRuntimeDirectory().path,
-                preferredModelNames: defaults.preferredModelNames,
-                contextWindowTokens: defaults.contextWindowTokens,
-                batchSize: defaults.batchSize,
-                gpuLayerCount: defaults.gpuLayerCount
-            ),
-            runtimeLocator: BundledRuntimeLocator()
-        )
+        let manager = try LlamaEvalRuntime.makeManager()
         do {
             try await manager.prepare()
         } catch {
+            if ProcessInfo.processInfo.environment["COTABBY_EVAL_MODEL_PATH"] != nil { throw error }
             throw XCTSkip(
                 "No llama runtime available (\(error)). Download a model in the app first; " +
-                "the eval loads it from ~/Library/Application Support/Cotabby/LlamaRuntime/."
+                "the eval loads it from the app's model storage directory."
             )
         }
+        defer { manager.shutdownSync(timeoutSeconds: 5) }
         let engine = LlamaSuggestionEngine(runtimeManager: manager)
         let spellChecker = CurrentWordSpellChecker()
         let cases = try Self.loadCases()
@@ -69,7 +58,11 @@ final class LlamaSuggestionEvalTests: XCTestCase {
             results.append(result)
         }
 
-        let report = LlamaEvalReport(modelLabel: Self.modelLabel(), results: results)
+        let report = LlamaEvalReport(
+            modelLabel: manager.diagnostics.modelFilePath.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "unknown-model",
+            results: results
+        )
+        print("Sampler seed: \(LlamaEvalRuntime.seed)")
         print(report.rendered())
         try Self.writeArtifact(report)
 
@@ -124,8 +117,8 @@ final class LlamaSuggestionEvalTests: XCTestCase {
         let request = SuggestionRequestFactory.buildRequest(
             context: context,
             settings: settings,
-            configuration: .standard,
-            visualContextSummary: evalCase.screenText.map(Self.screenExcerpt),
+            configuration: LlamaEvalRuntime.configuration,
+            visualContextSummary: evalCase.screenText.map { Self.screenExcerpt($0, for: evalCase) },
             phraseMemory: Self.phraseMemory(for: evalCase)
         ).request
 
@@ -167,21 +160,24 @@ final class LlamaSuggestionEvalTests: XCTestCase {
         )
     }
 
-    /// Puts a case's raw screen text through the same two passes the live pipeline applies before
-    /// a summary ever reaches the request factory (`ScreenshotContextGenerator`): the strict OCR
-    /// noise filter, then the nearest-lines character bound. Without this the eval would measure a
-    /// cleaner excerpt than the app can actually produce, and every sanitizer change would look
-    /// like a no-op here.
-    private static func screenExcerpt(_ rawScreenText: String) -> String {
-        let configuration = VisualContextConfiguration.default
-        let filtered = PromptContextSanitizer.sanitizeOCR(
-            rawScreenText,
-            maxCharacters: configuration.maxRecognizedCharacters
+    /// Puts a case's raw screen text through the same passes the live pipeline applies for a local
+    /// engine (`VisualContextConfiguration.local`: whole-window capture, `VisualContextExcerptSelector`,
+    /// then plain sanitization) before the request factory sees it. Without this the eval would
+    /// measure a cleaner excerpt than the app can produce, and every excerpt change would look like
+    /// a no-op here. Fixture lines carry no geometry, so the selector falls back to preferring the
+    /// latest lines — the fixtures' nearest-line-last convention.
+    private static func screenExcerpt(_ rawScreenText: String, for evalCase: LlamaEvalCase) -> String {
+        let configuration = VisualContextConfiguration.local
+        let lines = rawScreenText
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .map { OCRTextHygiene.OCRLine(text: String($0), confidence: 0.9) }
+        let selected = VisualContextExcerptSelector.select(
+            lines: lines,
+            fieldText: evalCase.precedingText + " " + evalCase.trailingText,
+            focusBounds: nil,
+            maxCharacters: configuration.maxSummaryCharacters
         )
-        return OCRTextHygiene.boundedKeepingEnd(
-            PromptContextSanitizer.sanitize(filtered),
-            maxChars: configuration.maxSummaryCharacters
-        )
+        return PromptContextSanitizer.sanitize(selected, maxCharacters: configuration.maxRecognizedCharacters)
     }
 
     /// Builds the phrase memory a case describes, in the state the app would really be in: seen a
@@ -204,34 +200,12 @@ final class LlamaSuggestionEvalTests: XCTestCase {
         })
     }
 
-    /// `~/Library/Application Support/Cotabby/LlamaRuntime`: the folder the installed `Cotabby.app`
-    /// downloads into (the locator names it after `CFBundleName`, which is "Cotabby" there).
-    private static func installedAppRuntimeDirectory() -> URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Cotabby", isDirectory: true)
-            .appendingPathComponent(BundledRuntimeLocator.runtimeFolderName, isDirectory: true)
-    }
-
     private static func loadCases() throws -> [LlamaEvalCase] {
         guard let url = Bundle(for: LlamaSuggestionEvalTests.self)
             .url(forResource: "llama-eval-cases", withExtension: "json") else {
             throw XCTSkip("llama-eval-cases.json missing from the test bundle")
         }
         return try LlamaEvalCase.loadDataset(from: url)
-    }
-
-    /// The model file the runtime locator would pick, for the report header. Mirrors the
-    /// preferred-name-first resolution without reaching into the manager's internals.
-    private static func modelLabel() -> String {
-        // Same folder the runtime was pointed at above, not the test host's own (empty) one.
-        let directory = installedAppRuntimeDirectory()
-        let discovered = BundledRuntimeLocator.discoverGGUFModelURLs(in: directory)
-            .map(\.lastPathComponent)
-        for preferred in LlamaRuntimeConfiguration.default.preferredModelNames
-        where discovered.contains(preferred) {
-            return preferred
-        }
-        return discovered.first ?? "unknown-model"
     }
 
     /// Repo-relative artifact path derived from this source file so the output lands in the
@@ -263,3 +237,79 @@ final class LlamaSuggestionEvalTests: XCTestCase {
     }
     #endif
 }
+
+#if RUN_LLAMA_EVAL
+/// Both real-model suites use the same explicit override. Supplying this environment variable in
+/// an xctestrun's EnvironmentVariables permits repo-local models without changing app preferences
+/// or copying assets into the user's Library. Xcode does not forward arbitrary shell variables to
+/// the app-hosted runner, so merely exporting the variable before xcodebuild is insufficient.
+@MainActor
+enum LlamaEvalRuntime {
+    static let seed: UInt32 = 42
+
+    /// `~/Library/Application Support/Cotabby/LlamaRuntime`: the folder the installed `Cotabby.app`
+    /// downloads into (the locator names it after `CFBundleName`, which is "Cotabby" there).
+    static func installedAppRuntimeDirectory() -> URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Cotabby", isDirectory: true)
+            .appendingPathComponent(BundledRuntimeLocator.runtimeFolderName, isDirectory: true)
+    }
+
+    /// Copy product tuning while fixing only the sampling seed. Both eval suites share this so
+    /// an A/B run compares prompt/cache changes without a different random sequence per case.
+    static var configuration: SuggestionConfiguration {
+        let defaults = SuggestionConfiguration.standard
+        return SuggestionConfiguration(
+            maxPredictionTokens: defaults.maxPredictionTokens, debounceMilliseconds: defaults.debounceMilliseconds,
+            temperature: defaults.temperature, topK: defaults.topK, topP: defaults.topP, minP: defaults.minP,
+            repetitionPenalty: defaults.repetitionPenalty, randomSeed: seed,
+            maxPrefixWords: defaults.maxPrefixWords, maxPrefixCharacters: defaults.maxPrefixCharacters,
+            maxPrefixWordsFoundationModel: defaults.maxPrefixWordsFoundationModel,
+            maxPrefixCharactersFoundationModel: defaults.maxPrefixCharactersFoundationModel,
+            maxSuffixCharacters: defaults.maxSuffixCharacters, llamaPromptTokenBudget: defaults.llamaPromptTokenBudget,
+            defaultUserName: defaults.defaultUserName,
+            // Share the explicit harness length with the typing replay; otherwise a 4–7-word
+            // campaign silently measures streaming with the older 12–20-word default.
+            defaultWordCountPreset: ProcessInfo.processInfo.environment["COTABBY_PHRASE_WORD_COUNT"]
+                .flatMap(SuggestionWordCountPreset.init(rawValue:)) ?? defaults.defaultWordCountPreset,
+            focusPollIntervalMilliseconds: defaults.focusPollIntervalMilliseconds
+        )
+    }
+
+    static func makeManager() throws -> LlamaRuntimeManager {
+        guard let path = ProcessInfo.processInfo.environment["COTABBY_EVAL_MODEL_PATH"], !path.isEmpty else {
+            // The tests run in the "Cotabby Test Host" identity, whose own Application Support
+            // folder holds no models, so the default manager would find nothing. Read the installed
+            // app's model folder instead: the model the app actually loads, with no copied files.
+            let defaults = LlamaRuntimeConfiguration.default
+            return LlamaRuntimeManager(
+                configuration: LlamaRuntimeConfiguration(
+                    runtimeDirectoryPath: installedAppRuntimeDirectory().path,
+                    preferredModelNames: defaults.preferredModelNames,
+                    contextWindowTokens: defaults.contextWindowTokens,
+                    batchSize: defaults.batchSize,
+                    gpuLayerCount: defaults.gpuLayerCount
+                ),
+                runtimeLocator: BundledRuntimeLocator()
+            )
+        }
+        guard path.hasPrefix("/"), FileManager.default.fileExists(atPath: path) else {
+            throw NSError(domain: "LlamaEvalRuntime", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "COTABBY_EVAL_MODEL_PATH must name an existing absolute GGUF path: \(path)"
+            ])
+        }
+        let url = URL(fileURLWithPath: path)
+        let defaults = LlamaRuntimeConfiguration.default
+        return LlamaRuntimeManager(
+            configuration: LlamaRuntimeConfiguration(
+                runtimeDirectoryPath: url.deletingLastPathComponent().path,
+                preferredModelNames: [url.lastPathComponent],
+                contextWindowTokens: defaults.contextWindowTokens,
+                batchSize: defaults.batchSize,
+                gpuLayerCount: defaults.gpuLayerCount
+            ),
+            runtimeLocator: BundledRuntimeLocator()
+        )
+    }
+}
+#endif
