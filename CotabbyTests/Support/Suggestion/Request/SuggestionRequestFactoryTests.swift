@@ -681,4 +681,41 @@ final class SuggestionRequestFactoryTests: XCTestCase {
             "ef ghi"
         )
     }
+
+    // MARK: - clock times in screen context
+
+    func test_buildRequest_keepsClockTimeInLocalScreenContext() {
+        for engine in [SuggestionEngineKind.llamaOpenSource, .appleIntelligence] {
+            let result = SuggestionRequestFactory.buildRequest(
+                context: CotabbyTestFixtures.focusedInputContext(precedingText: "Got it, standup at "),
+                settings: CotabbyTestFixtures.settingsSnapshot(selectedEngine: engine),
+                configuration: .standard,
+                visualContextSummary: "Alex: standup is moved to 09:30 tomorrow"
+            )
+            XCTAssertEqual(
+                result.request.visualContextSummary,
+                "Alex standup is moved to 09:30 tomorrow",
+                "\(engine)"
+            )
+        }
+    }
+
+    /// The endpoint and the clipboard keep today's sanitization exactly: nothing wider leaves the Mac.
+    func test_buildRequest_endpointScreenContextAndClipboardStillStripColons() {
+        let endpoint = SuggestionRequestFactory.buildRequest(
+            context: CotabbyTestFixtures.focusedInputContext(precedingText: "Got it, standup at "),
+            settings: CotabbyTestFixtures.settingsSnapshot(selectedEngine: .openAICompatible),
+            configuration: .standard,
+            visualContextSummary: "Alex: standup is moved to 09:30 tomorrow"
+        )
+        XCTAssertEqual(endpoint.request.visualContextSummary, "Alex standup is moved to 09 30 tomorrow")
+
+        let clipboard = SuggestionRequestFactory.buildRequest(
+            context: CotabbyTestFixtures.focusedInputContext(precedingText: "the standup moved to "),
+            settings: CotabbyTestFixtures.settingsSnapshot(selectedEngine: .llamaOpenSource, isClipboardContextEnabled: true),
+            configuration: .standard,
+            clipboardContext: "standup moved to 09:30 tomorrow"
+        )
+        XCTAssertFalse(clipboard.request.clipboardContext?.contains(":") ?? false)
+    }
 }

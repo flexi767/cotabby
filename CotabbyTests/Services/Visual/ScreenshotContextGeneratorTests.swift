@@ -33,6 +33,24 @@ final class ScreenshotContextGeneratorTests: XCTestCase {
         XCTAssertLessThanOrEqual(local.text.count, 4000)
     }
 
+    /// Only the on-device `.local` profile keeps a clock time's colon. The endpoint profile keeps
+    /// its shipped filtering byte for byte, so a network backend receives exactly what it did.
+    func test_localProfileKeepsClockTimesWhileEndpointProfileIsUnchanged() async throws {
+        let lines = [OCRTextHygiene.OCRLine(text: "Alex: standup is moved to 09:30 tomorrow", confidence: 1)]
+        let generator = ScreenshotContextGenerator(
+            screenshotService: RecordingScreenshotCapture(image: makeImage()),
+            textExtractor: CountingTextExtractor(extracted: extracted(lines))
+        )
+
+        let local = try await generator.generateContext(for: makeSnapshot(), configuration: .local)
+        let endpoint = try await generator.generateContext(for: makeSnapshot(), configuration: .default)
+
+        XCTAssertTrue(local.text.contains("09:30"), local.text)
+        // The endpoint profile's stricter OCR filter drops the bare numbers with the colon, as it
+        // did before this rule existed. Pinned verbatim: nothing about what leaves the Mac changes.
+        XCTAssertEqual(endpoint.text, "Alex standup is moved to tomorrow")
+    }
+
     func test_generateContext_ocrTextIsCappedAndSanitized() async throws {
         let configuration = makeConfiguration(maxSummaryCharacters: 60)
         let generator = makeGenerator(

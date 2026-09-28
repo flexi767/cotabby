@@ -25,7 +25,9 @@ nonisolated enum VisualContextExcerptSelector {
             // Confidence/line hygiene has already removed corrupt recognition. The legacy
             // token-level OCR filter drops every number and unrecognized English word, erasing
             // deadlines, amounts and names. Preserve those facts in the richer local excerpt.
-            let text = PromptContextSanitizer.sanitize(cleaned)
+            // This selector runs only for the on-device `.local` profile, so clock times keep
+            // their colon (`09:30`, not `09 30`); nothing else about sanitization changes.
+            let text = PromptContextSanitizer.sanitize(cleaned, preservingClockTimes: true)
             guard !text.isEmpty, seen.insert(text.lowercased()).inserted else { return nil }
             let score: Double
             if let bounds = line.boundingBox, let focus = focusBounds {

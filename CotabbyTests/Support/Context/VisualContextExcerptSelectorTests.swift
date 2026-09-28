@@ -78,6 +78,15 @@ final class VisualContextExcerptSelectorTests: XCTestCase {
         )
     }
 
+    /// A reply quotes the time on screen. Stripping the colon turned `09:30` into `09 30`, and the
+    /// model copied that into the suggestion; a well-formed clock time must reach it intact.
+    func test_keepsWellFormedClockTimesIntact() {
+        XCTAssertEqual(
+            select([.init(text: "Alex: standup is moved to 09:30 tomorrow, same link", confidence: 1)], budget: 4000),
+            "Alex standup is moved to 09:30 tomorrow same link"
+        )
+    }
+
     func test_nonPositiveBudgetReturnsEmpty() {
         let lines = [OCRTextHygiene.OCRLine(text: "Project agenda", confidence: 1)]
         XCTAssertEqual(select(lines, budget: -1), "")

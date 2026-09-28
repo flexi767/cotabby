@@ -14,21 +14,42 @@ nonisolated enum PromptContextSanitizer {
         .union(CharacterSet(charactersIn: "@."))
     private static let replacementScalar = UnicodeScalar(" ")
 
+    /// A well-formed clock time: `H:MM`, `HH:MM`, or `HH:MM:SS` with ASCII digits, hours 0-23 and
+    /// minutes/seconds 00-59. The lookarounds refuse any digit, colon, or dot on either side, so
+    /// `123:45`, `12:30:99`, `1:2`, `10.0.0.1:22`, and `1:23:45:67` never qualify: a malformed or
+    /// chained sequence loses every colon exactly as before.
+    private static let clockTimePattern =
+        "(?<![0-9:.])(?:[01]?[0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9])?(?![0-9:])"
+    private static let clockTimeColon = UnicodeScalar(":")
+
     /// Returns prompt-safe context containing only letters, numbers, whitespace, `@`, and `.`.
     ///
     /// Disallowed scalars become spaces instead of being deleted. That preserves word boundaries:
     /// `raw-output` becomes `raw output`, not `rawoutput`. The final line pass collapses repeated
     /// whitespace so stripped punctuation cannot still dominate the prompt through spacing noise.
-    static func sanitize(_ rawText: String, maxCharacters: Int? = nil) -> String {
+    ///
+    /// `preservingClockTimes` additionally keeps the colon inside a well-formed clock time
+    /// (`09:30`, not `09 30`): a reply quotes the time on screen, and the model copied the broken
+    /// form into its suggestion. It is opt-in and only the on-device screen-context path passes
+    /// it. Every other colon is still replaced, so role headers (`system:`), control markers
+    /// (`<|im_start|>`), URLs, and ports lose theirs, and the clipboard, surface metadata, and the
+    /// network-endpoint path keep today's output byte for byte.
+    static func sanitize(
+        _ rawText: String,
+        maxCharacters: Int? = nil,
+        preservingClockTimes: Bool = false
+    ) -> String {
         let withoutANSIEscapes = rawText.replacingOccurrences(
             of: ansiEscapePattern,
             with: " ",
             options: .regularExpression
         )
 
-        let sanitizedScalars = withoutANSIEscapes.unicodeScalars.map { scalar in
-            allowedCharacters.contains(scalar) ? scalar : replacementScalar
-        }
+        let keptColons = preservingClockTimes ? clockTimeColonIndices(in: withoutANSIEscapes) : []
+        let sanitizedScalars = zip(withoutANSIEscapes.unicodeScalars.indices, withoutANSIEscapes.unicodeScalars)
+            .map { index, scalar in
+                allowedCharacters.contains(scalar) || keptColons.contains(index) ? scalar : replacementScalar
+            }
 
         let sanitizedText = String(String.UnicodeScalarView(sanitizedScalars))
         let normalizedLines = sanitizedText
@@ -67,6 +88,30 @@ nonisolated enum PromptContextSanitizer {
     static func significantTokens(from text: String, minimumLength: Int = 3) -> Set<String> {
         let words = text.lowercased().components(separatedBy: .alphanumerics.inverted)
         return Set(words.filter { $0.count >= minimumLength })
+    }
+
+    /// Positions of the colons that sit inside a well-formed clock time, as unicode-scalar
+    /// indices of `text`. Nothing else in the match is special-cased: its digits are already
+    /// allowed, so the colon is the only scalar this rule can add to the output.
+    private static func clockTimeColonIndices(in text: String) -> Set<String.UnicodeScalarView.Index> {
+        guard text.unicodeScalars.contains(clockTimeColon),
+              let expression = try? NSRegularExpression(pattern: clockTimePattern) else {
+            return []
+        }
+        var indices = Set<String.UnicodeScalarView.Index>()
+        let fullRange = NSRange(text.startIndex..., in: text)
+        for match in expression.matches(in: text, range: fullRange) {
+            guard let range = Range(match.range, in: text) else { continue }
+            let scalars = text.unicodeScalars
+            var index = range.lowerBound
+            while index < range.upperBound {
+                if scalars[index] == clockTimeColon {
+                    indices.insert(index)
+                }
+                index = scalars.index(after: index)
+            }
+        }
+        return indices
     }
 
     static func containsAlphanumericSignal(_ text: String) -> Bool {

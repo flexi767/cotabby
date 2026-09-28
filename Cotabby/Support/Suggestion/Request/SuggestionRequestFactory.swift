@@ -239,8 +239,14 @@ enum SuggestionRequestFactory {
             return nil
         }
 
-        let limit = VisualContextConfiguration.forEngine(engine).maxSummaryCharacters
-        var sanitizedSummary = PromptContextSanitizer.sanitize(rawSummary, maxCharacters: limit)
+        let profile = VisualContextConfiguration.forEngine(engine)
+        // The last gate before the prompt. Clock times survive only for the on-device profile, so
+        // a configured network endpoint receives exactly the screen text it did before.
+        var sanitizedSummary = PromptContextSanitizer.sanitize(
+            rawSummary,
+            maxCharacters: profile.maxSummaryCharacters,
+            preservingClockTimes: profile.capturesEntireWindow
+        )
         // CJK and code can cost far more tokens per character than English. Reserve space for
         // Apple's instructions, caret text and clipboard instead of filling its shared 4K window
         // with screen text alone. Native llama additionally allocates the complete prompt by token.
