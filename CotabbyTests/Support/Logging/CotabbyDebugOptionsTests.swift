@@ -40,6 +40,14 @@ final class CotabbyDebugOptionsTests: XCTestCase {
         XCTAssertEqual(CotabbyDebugOptions.launchArgument, "-cotabby-debug")
     }
 
+    /// This suite really does run with `-cotabby-debug`: the scheme's test action inherits the run
+    /// action's arguments. Capture artifacts must still never reach the user's Desktop folder from a
+    /// test run — both because they are clutter and because the consent gate on an unapproved bundle
+    /// path blocks the first enumeration and hangs the whole run.
+    func test_desktopCaptureArtifactsAreNeverWrittenUnderXCTest() {
+        XCTAssertFalse(CotabbyDebugOptions.isWritingDesktopCaptureArtifacts)
+    }
+
     func test_areOverlaysAvailable_isCompiledInOnlyForDebugBuilds() {
         // The test bundle is compiled in the same configuration as its host app.
         #if DEBUG

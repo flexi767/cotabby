@@ -156,12 +156,14 @@ final class ScreenshotContextGenerator: ScreenshotContextGenerating {
                 maxChars: configuration.maxRecognizedCharacters
             )
             return configuration.capturesEntireWindow
-                ? PromptContextSanitizer.sanitize(cleanedOCR, maxCharacters: configuration.maxRecognizedCharacters)
+                ? PromptContextSanitizer.sanitize(
+                    cleanedOCR, maxCharacters: configuration.maxRecognizedCharacters, preservingClockTimes: true
+                )
                 : PromptContextSanitizer.sanitizeOCR(cleanedOCR, maxCharacters: configuration.maxRecognizedCharacters)
         }.value
         try Task.checkCancellation()
 
-        if CotabbyDebugOptions.isEnabled {
+        if CotabbyDebugOptions.isWritingDesktopCaptureArtifacts {
             saveDebugScreenshot(
                 screenshot.image,
                 text: extracted.text,
@@ -263,7 +265,9 @@ final class ScreenshotContextGenerator: ScreenshotContextGenerating {
     private func boundedSummaryText(_ text: String, configuration: VisualContextConfiguration) -> String {
         PromptContextSanitizer.sanitize(
             text,
-            maxCharacters: configuration.maxSummaryCharacters
+            maxCharacters: configuration.maxSummaryCharacters,
+            // Only the on-device profile; the endpoint profile's output stays exactly as shipped.
+            preservingClockTimes: configuration.capturesEntireWindow
         )
     }
 

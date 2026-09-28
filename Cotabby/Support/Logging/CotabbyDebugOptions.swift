@@ -24,6 +24,17 @@ nonisolated enum CotabbyDebugOptions {
         ProcessInfo.processInfo.arguments.contains(launchArgument)
     }
 
+    /// Whether this process may write capture artifacts into `~/Desktop` (the screenshot/OCR dumps
+    /// and the Chromium AX tree dump). `-cotabby-debug` alone is not enough: the scheme's test
+    /// action runs with `shouldUseLaunchSchemeArgsEnv = YES`, so it inherits that argument and a
+    /// plain `xcodebuild test` began writing synthetic capture files into the user's Desktop
+    /// folder. Worse, on a bundle path macOS holds no Desktop consent for — a fresh worktree's test
+    /// host — the first directory enumeration blocks on the consent gate with no visible prompt,
+    /// which wedged a test run for 26 minutes at 0% CPU. Logging and the file sinks are unaffected.
+    static var isWritingDesktopCaptureArtifacts: Bool {
+        isEnabled && ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil
+    }
+
     /// The swift-log floor applied to the always-on `OSLogHandler` and the debug-only file sinks.
     ///
     /// swift-log only skips evaluating a log call's `@autoclosure` message (and building its

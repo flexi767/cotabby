@@ -36,7 +36,7 @@ enum AXTreeDumpWriter {
         bundleIdentifier: String,
         focusedElementIdentifier: String
     ) {
-        guard CotabbyDebugOptions.isEnabled,
+        guard CotabbyDebugOptions.isWritingDesktopCaptureArtifacts,
               bundleIdentifier == dumpAXBundleIdentifier,
               lastDumpedElementID != focusedElementIdentifier else {
             return
