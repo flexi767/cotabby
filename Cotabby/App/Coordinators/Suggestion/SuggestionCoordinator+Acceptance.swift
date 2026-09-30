@@ -83,13 +83,23 @@ extension SuggestionCoordinator {
         // partial modes (`.word`, `.phrase`), since whole-suggestion acceptance is exclusively the
         // dedicated full-accept key's job.
         let primaryGranularity = settingsSnapshot.acceptanceGranularity
+        // A presentation the overlay is still holding (pixel caret read, lagging host caret) leaves
+        // `overlayState` naming the pre-accept tail for a few tens of milliseconds. Hand the held
+        // text to validation so a rapid second Tab accepts the tail Cotabby is about to paint
+        // instead of mismatching, tearing the session down, and leaking Tab into the host.
+        let heldPresentationText = overlayController.heldPresentationText
         let preparation: SuggestionAcceptancePreparation
         if fullText {
-            preparation = interactionState.prepareFullAcceptance(from: rawContext, overlayState: overlayState)
+            preparation = interactionState.prepareFullAcceptance(
+                from: rawContext,
+                overlayState: overlayState,
+                heldPresentationText: heldPresentationText
+            )
         } else {
             preparation = interactionState.prepareAcceptance(
                 from: rawContext,
                 overlayState: overlayState,
+                heldPresentationText: heldPresentationText,
                 granularity: primaryGranularity,
                 autoAcceptTrailingPunctuation: settingsSnapshot.autoAcceptTrailingPunctuation
             )
@@ -591,9 +601,21 @@ extension SuggestionCoordinator {
             suggestionStreamingState.recordRendered(advancedSession.remainingText)
         }
         state = .ready(text: advancedSession.remainingText, latency: advancedSession.latency)
-        // Same slide as Tab acceptance; the user typed the next characters, so the caret traveled
-        // by exactly them. Fall back to the (session-start) caret anchor only if the slide can't apply.
-        if !overlayController.advanceInline(to: advancedSession.remainingText, insertedText: typedCharacters) {
+        // Nearly typed through: fetch what comes next into the cache now, so exhausting this
+        // suggestion lands on a ready one instead of a blank gap (see `prefetchContinuation`).
+        if let rawContext = focusModel.snapshot.context {
+            prefetchContinuation(after: advancedSession, rawContext: rawContext)
+        }
+        if isHoldingForHostMarkedText {
+            // The host's own prediction still occupies the ghost's spot; the advanced tail stays
+            // hidden until a snapshot without marked text reconciles and re-presents it.
+            if overlayState.isVisible {
+                hideOverlay(reason: Self.hostMarkedTextHoldReason)
+            }
+        } else if !overlayController.advanceInline(to: advancedSession.remainingText, insertedText: typedCharacters) {
+            // Same slide as Tab acceptance; the user typed the next characters, so the caret
+            // traveled by exactly them. Fall back to the (session-start) caret anchor only if the
+            // slide can't apply.
             presentOverlay(
                 text: advancedSession.remainingText,
                 at: session.baseContext.caretRect,
@@ -789,6 +811,7 @@ extension SuggestionCoordinator {
             inputFrameRect: context.inputFrameRect,
             caretQuality: anchor.quality,
             bundleIdentifier: context.bundleIdentifier,
+            focusedURLString: context.focusedURLString,
             isCaretAtEndOfLine: context.isCaretAtEndOfLine,
             observedCharWidth: context.observedCharWidth,
             isRightToLeft: isRightToLeft,
@@ -796,6 +819,13 @@ extension SuggestionCoordinator {
             focusedInputIdentityKey: context.focusedInputIdentityKey,
             isCorrection: isCorrection,
             resolvedFieldStyle: context.resolvedFieldStyle,
+            hostTextMetrics: context.hostTextMetrics,
+            isWebContentField: context.isWebContentField,
+            hasTrailingContent: context.hasTrailingContent,
+            isSingleLineField: context.isSingleLineField,
+            elementFrameRect: context.elementFrameRect,
+            lineTextBeforeCaret: GhostCaretRefinement.paragraphTextBeforeCaret(in: context.precedingText),
+            wrappedRun: context.observedContentEdges?.wrappedRun,
             observedContentEdges: context.observedContentEdges
         )
         let presentationMessage = overlayPresenter.present(
@@ -874,6 +904,20 @@ extension SuggestionCoordinator {
             return LayoutRepairedAnchor(rect: fallbackRect, quality: quality, outcome: nil, skipReason: nil)
         }
 
+        // A caret inside a wrapped paragraph run (CodeMirror in Obsidian, see `WrappedRunAnchor`):
+        // the paragraph is laid out in the run's own frame at the sibling runs' pitch, and the
+        // line the caret lands on is placed from the union's top. That geometry is measured (frame
+        // and pitch) except for the x inside the line, which is the host font's advance.
+        // A one-line run is not laid out again: its frame is the host's own line box, so the
+        // Accessibility caret already has the right line and only its x is approximate (the pixel
+        // read corrects that at presentation). Laying it out put the caret fourteen lines up.
+        if let edges = context.observedContentEdges, let wrapped = edges.wrappedRun, !wrapped.spansOneLine {
+            return wrappedRunAnchor(
+                edges: edges, context: context, fallbackRect: fallbackRect,
+                pendingInsertion: pendingInsertion, isRightToLeft: isRightToLeft
+            )
+        }
+
         // Derived rects carry a real AX measurement, so whether the estimate may second-guess
         // them depends on who produced the measurement. Both bypasses skip the estimator
         // entirely rather than computing a diagnostic they can never act on: this path runs
@@ -893,8 +937,11 @@ extension SuggestionCoordinator {
             // real line positions, including blank lines some hosts omit from the AX text. The
             // provenance check matters because content edges can now also come from the host's
             // line-query attributes, which describe a left margin but carry no line information —
-            // letting those skip the repair would leave a wrong-line web caret uncorrected.
-            if context.observedContentEdges?.isRunMeasured == true {
+            // letting those skip the repair would leave a wrong-line web caret uncorrected. A
+            // one-line run (`WrappedRunAnchor.spansOneLine`) is such a frame too: it is the host's
+            // own line box, and the pixel read corrects its x at presentation.
+            if context.observedContentEdges?.isRunMeasured == true
+                || context.observedContentEdges?.wrappedRun?.spansOneLine == true {
                 return LayoutRepairedAnchor(
                     rect: fallbackRect, quality: .derived, outcome: nil, skipReason: .runMeasuredGeometry
                 )
@@ -932,6 +979,51 @@ extension SuggestionCoordinator {
         case .rejected:
             return LayoutRepairedAnchor(rect: fallbackRect, quality: quality, outcome: outcome, skipReason: nil)
         }
+    }
+
+    /// Lays the wrapped paragraph out inside its run frame and returns the caret's line box there.
+    /// The estimator judges a field's shape from its frame height and rejects content taller than
+    /// the frame, but a union frame grows with its paragraph and the throttled run walk can report
+    /// it a few lines short of the live text (measured: every estimate rejected for vertical
+    /// overflow while a paragraph was being typed), so the layout frame is opened far below the
+    /// run: only its top edge and width place the caret. The caret rect is the sibling runs' line
+    /// box at the laid-out line's top, which is where the host draws that line.
+    static func wrappedRunAnchor(
+        edges: ObservedContentEdges,
+        context: FocusedInputContext,
+        fallbackRect: CGRect,
+        pendingInsertion: String,
+        isRightToLeft: Bool
+    ) -> LayoutRepairedAnchor {
+        guard let wrapped = edges.wrappedRun, let pitch = edges.linePitch ?? edges.lineBoxHeight, pitch > 0,
+              wrapped.frame.width > 0
+        else {
+            return LayoutRepairedAnchor(rect: fallbackRect, quality: .estimated, outcome: nil, skipReason: nil)
+        }
+        let frame = wrapped.frame
+        guard frame.width > 0 else {
+            return LayoutRepairedAnchor(rect: fallbackRect, quality: .estimated, outcome: nil, skipReason: nil)
+        }
+        let layoutHeight = max(frame.height, pitch * 60)
+        let layoutFrame = CGRect(x: frame.minX, y: frame.maxY - layoutHeight, width: frame.width, height: layoutHeight)
+        let input = TextLayoutCaretEstimator.Input(
+            precedingText: wrapped.paragraphTextBeforeCaret + pendingInsertion,
+            fieldFrame: layoutFrame,
+            fieldStyle: context.resolvedFieldStyle,
+            isRightToLeft: isRightToLeft,
+            prefixMayBeTruncated: false,
+            observedLineHeight: pitch,
+            observedCharWidth: context.observedCharWidth,
+            observedContentEdges: ObservedContentEdges(leftX: frame.minX, topY: frame.maxY)
+        )
+        let outcome = TextLayoutCaretEstimator.estimate(for: input)
+        guard case .estimate(let estimate) = outcome else {
+            return LayoutRepairedAnchor(rect: fallbackRect, quality: .estimated, outcome: outcome, skipReason: nil)
+        }
+        let lineBox = edges.lineBoxHeight ?? pitch
+        let lineTop = frame.maxY - CGFloat(estimate.lineIndex) * pitch
+        let rect = CGRect(x: estimate.caretRect.minX, y: lineTop - lineBox, width: 2, height: lineBox)
+        return LayoutRepairedAnchor(rect: rect, quality: .derived, outcome: outcome, skipReason: nil)
     }
 
     /// Vertical agreement test between the AX-derived caret and the layout estimate. Tolerance is

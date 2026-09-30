@@ -279,6 +279,9 @@ final class SuggestionTextNormalizerTests: XCTestCase {
 
     // MARK: - Period-only suppression
 
+    /// "do not suggest dot" still holds after the merge, now through upstream's broader word-content
+    /// rule (a completion must carry a letter or digit) rather than this fork's own period check, so
+    /// the attributed reason is `noWordContent`.
     func test_normalizeDetailed_suppressesACompletionThatIsOnlyAPeriod() {
         let request = CotabbyTestFixtures.suggestionRequest(
             prefixText: "See you tomorrow",
@@ -288,7 +291,7 @@ final class SuggestionTextNormalizerTests: XCTestCase {
         for raw in [".", " .", ". ", "...", "\u{2026}"] {
             let result = SuggestionTextNormalizer.normalizeDetailed(raw, for: request)
             XCTAssertEqual(result.text, "", "expected \(raw) to be suppressed")
-            XCTAssertEqual(result.suppression, .periodOnly, "expected \(raw) to be attributed")
+            XCTAssertEqual(result.suppression, .noWordContent, "expected \(raw) to be attributed")
         }
     }
 
@@ -298,12 +301,20 @@ final class SuggestionTextNormalizerTests: XCTestCase {
             precedingText: "Send it to me at noon"
         )
 
-        // A period carrying any other character is real text the writer has not typed yet, and other
-        // punctuation-only completions (a closing bracket, a question mark) keep their old behavior.
-        for raw in [" tomorrow.", ".5", "com.", ")", "?"] {
+        // A period carrying any other character is real text the writer has not typed yet.
+        for raw in [" tomorrow.", ".5", "com."] {
             let result = SuggestionTextNormalizer.normalizeDetailed(raw, for: request)
             XCTAssertEqual(result.text, raw, "expected \(raw) to survive")
             XCTAssertNil(result.suppression)
+        }
+
+        // A lone closing bracket or question mark used to pass this fork's period-only check. The
+        // word-content rule now requires a letter or digit, so every punctuation-only completion is
+        // withheld, not just the period the user objected to.
+        for raw in [")", "?"] {
+            let result = SuggestionTextNormalizer.normalizeDetailed(raw, for: request)
+            XCTAssertEqual(result.text, "", "expected \(raw) to be suppressed")
+            XCTAssertEqual(result.suppression, .noWordContent)
         }
     }
 }
