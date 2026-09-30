@@ -33,6 +33,21 @@ final class CompletionContentPolicyTests: XCTestCase {
         XCTAssertNil(CompletionContentPolicy.rejection(for: "thing that's like a sandwich", precedingText: "that new "))
     }
 
+    func testStrayMarkupIsCutAndThePrecedingProseKept() {
+        let cut = { CompletionContentPolicy.truncatingAtStrayMarkup($0, precedingText: $1) }
+        XCTAssertEqual(cut("add a link to the <code>/docs</code> page in", "My only suggestion would be to "), "add a link to the")
+        XCTAssertEqual(cut("ation for the team at the <strong>", "a letter of recommend"), "ation for the team at the")
+        XCTAssertEqual(cut("die <code>.", "ich habe "), "die")
+        // Opening with a tag leaves nothing to keep; the completion stays whole so the scaffolding
+        // rule still rejects it.
+        XCTAssertEqual(cut("<code>on_message</code> function.", "a race condition in the "), "<code>on_message</code> function.")
+        XCTAssertEqual(cut(" <br>", "hello "), " <br>")
+        // A field that already holds markup keeps it; plain prose and bare comparisons are untouched.
+        XCTAssertEqual(cut("to the <b>docs</b>", "<p>Link "), "to the <b>docs</b>")
+        XCTAssertEqual(cut("if a < b and c > d", "check "), "if a < b and c > d")
+        XCTAssertEqual(cut("see you tomorrow", "ok "), "see you tomorrow")
+    }
+
     func testLoopingCompletionsAreRejected() {
         // Live (Chrome, 90ms/key): "Hi S" -> ". Hi S. Hi S. Hi S."; ", t" -> "ttttt, 123456" passes (one word).
         let policy = CompletionContentPolicy.self

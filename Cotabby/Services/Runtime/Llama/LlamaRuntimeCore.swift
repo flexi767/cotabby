@@ -355,6 +355,7 @@ nonisolated final class LlamaRuntimeCore: @unchecked Sendable {
         var stopReason = "budget_exhausted"
         var buffer = TokenHealingBuffer(replayedPrefix: healingPrefix)
         var replayTokens = 0
+        var firstToken: Int32?
 
         for _ in 0 ..< options.maxPredictionTokens + healingPrefix.count {
             // Cooperative cancellation: when the wrapping Task is cancelled (caller hit a new
@@ -372,6 +373,7 @@ nonisolated final class LlamaRuntimeCore: @unchecked Sendable {
                 stopReason = "engine_cancelled"
                 break
             }
+            if firstToken == nil { firstToken = result.token }
             if result.is_eos {
                 stopReason = "eos"
                 break
@@ -433,7 +435,9 @@ nonisolated final class LlamaRuntimeCore: @unchecked Sendable {
             ]
         )
 
-        return Self.generationOutput(text: generatedText, sumLogprob: sumLogprob, tokensGenerated: tokensGenerated, options: options)
+        var output = Self.generationOutput(text: generatedText, sumLogprob: sumLogprob, tokensGenerated: tokensGenerated, options: options)
+        output.firstToken = firstToken
+        return output
     }
 
     /// Confidence affects the returned value after decode; it must not change retained KV state.
@@ -598,6 +602,7 @@ nonisolated final class LlamaRuntimeCore: @unchecked Sendable {
                                 healingPrefix.isEmpty && options.forceWordContinuation
                             )
                             setCompletionPrefix(healingPrefix, sequenceID: autocompleteSequenceID)
+                            engine.setBannedSeedToken(autocompleteSequenceID, options.bannedSeedToken ?? -1)
                             // Per-token log-probabilities cost two O(vocab) passes each in the
                             // engine; only compute them when the confidence gate would actually
                             // read them. Re-assert per request: the floor is not part of the
@@ -667,6 +672,7 @@ nonisolated final class LlamaRuntimeCore: @unchecked Sendable {
         // word-continuation constraint here, before decoding.
         engine.setForceWordContinuation(seqID, healingPrefix.isEmpty && options.forceWordContinuation)
         setCompletionPrefix(healingPrefix, sequenceID: seqID)
+        engine.setBannedSeedToken(seqID, options.bannedSeedToken ?? -1)
         // Skip the engine's per-token log-probability work (two O(vocab) passes per token)
         // whenever confidence suppression is disabled — the shipping default — since the value
         // would be summed and then discarded.

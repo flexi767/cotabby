@@ -19,6 +19,12 @@ struct SuggestionResult: Equatable, Sendable {
     /// engines drop leading spaces, so their results leave this false and `GhostSpaceBoundary`
     /// decides from the characters on either side instead.
     let spacingIsExact: Bool
+    /// The local engine's first sampled token, which a one-shot retry can ban (see
+    /// `SuggestionRequest.retryBannedSeedToken`). `nil` for engines that do not expose tokens and
+    /// for results rebuilt from partials or rebased onto newer text.
+    let firstToken: Int32?
+    /// True when this result came from a one-shot retry rather than the first attempt.
+    let isRetry: Bool
 
     // This immutable Sendable value is also constructed by pure candidate-reconciliation rules.
     // Construction needs no UI actor; engine delivery and presentation remain main-actor owned.
@@ -28,7 +34,9 @@ struct SuggestionResult: Equatable, Sendable {
         text: String,
         latency: TimeInterval,
         suppressionReason: String? = nil,
-        spacingIsExact: Bool = false
+        spacingIsExact: Bool = false,
+        firstToken: Int32? = nil,
+        isRetry: Bool = false
     ) {
         self.generation = generation
         self.rawText = rawText
@@ -36,5 +44,7 @@ struct SuggestionResult: Equatable, Sendable {
         self.latency = latency
         self.suppressionReason = suppressionReason
         self.spacingIsExact = spacingIsExact
+        self.firstToken = firstToken
+        self.isRetry = isRetry
     }
 }

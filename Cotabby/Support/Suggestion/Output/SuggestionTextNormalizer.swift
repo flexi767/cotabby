@@ -162,6 +162,11 @@ enum SuggestionTextNormalizer {
             )
         }
 
+        normalized = CompletionContentPolicy.truncatingAtStrayMarkup(
+            normalized,
+            precedingText: request.context.precedingText
+        )
+
         // Content shapes that are wrong whenever they appear (see `CompletionContentPolicy`).
         if let rejection = CompletionContentPolicy.rejection(for: normalized, precedingText: request.context.precedingText) {
             return SuggestionNormalizationResult(text: "", suppression: suppression(for: rejection))

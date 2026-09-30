@@ -347,6 +347,7 @@ final class LlamaEvalScoringTests: XCTestCase {
         XCTAssertTrue(cases[2]["shown"] is NSNull)
         XCTAssertEqual(cases[2]["suppressionStage"] as? String, "normalizer")
         XCTAssertTrue(cases[0]["suppressionStage"] is NSNull)
+        XCTAssertEqual(cases.map { $0["retried"] as? Bool }, [false, false, false])
     }
 
     // MARK: - Helpers

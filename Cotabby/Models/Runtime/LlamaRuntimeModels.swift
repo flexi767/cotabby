@@ -210,6 +210,11 @@ struct LlamaGenerationOptions: Equatable, Sendable {
     /// is the strongest anti-rambling signal available per token, and the engine computes it while
     /// the logits row is hot, so honoring it costs nothing here.
     var stopAtArgmaxEOG: Bool = true
+
+    /// A token masked from the first (seed) sample only. Set on a one-shot retry after the first
+    /// attempt opened with an unusable token, so the same prompt yields its next-best opening.
+    /// Not part of the sampling fingerprint: it touches one sample and never the retained KV.
+    var bannedSeedToken: Int32?
 }
 
 /// One generation's text plus the confidence signals the caller needs for suppression accounting.
@@ -222,7 +227,9 @@ struct LlamaGenerationOutput: Equatable, Sendable {
     let averageLogprob: Double?
     /// True when the completion was withheld because `averageLogprob` fell below the floor.
     let suppressedByLowConfidence: Bool
-
+    /// The first token the engine sampled, including an immediate end-of-generation. A caller that
+    /// rejects this completion can ban it via `LlamaGenerationOptions.bannedSeedToken` and retry.
+    var firstToken: Int32?
 }
 
 /// The concrete runtime assets selected during bootstrap after checking available model files.

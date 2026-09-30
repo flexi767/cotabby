@@ -206,7 +206,9 @@ final class LlamaSuggestionEngine {
                 suppressionReason: normalization.suppression?.rawValue,
                 // A base model's completion follows the prompt text exactly: its leading space (or
                 // the lack of one) is the model's own word boundary.
-                spacingIsExact: true
+                spacingIsExact: true,
+                firstToken: output.firstToken,
+                isRetry: request.retryBannedSeedToken != nil
             )
         } catch is CancellationError {
             CotabbyLogger.suggestion.debug("Llama generation cancelled", metadata: baseMetadata)
@@ -282,7 +284,8 @@ final class LlamaSuggestionEngine {
             ),
             confidenceFloor: resolvedConfidenceFloor(),
             sentenceStopMinimumWords: request.wordRange?.lowWords ?? 0,
-            stopAtArgmaxEOG: resolvedStopAtArgmaxEOG()
+            stopAtArgmaxEOG: resolvedStopAtArgmaxEOG(),
+            bannedSeedToken: request.retryBannedSeedToken
         )
     }
 }

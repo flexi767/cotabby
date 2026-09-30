@@ -111,6 +111,30 @@ enum CompletionContentPolicy {
         return closingPunctuation.contains(first)
     }
 
+    /// An HTML tag in a completion for a field whose own text carries none.
+    private static let markupTagPattern = #"</?[a-zA-Z][a-zA-Z0-9]*(\s[^<>]*)?>"#
+
+    /// Cuts a completion at its first stray HTML tag, keeping the prose before it.
+    ///
+    /// Web-trained base models drift into markup mid-sentence ("add a link to the <code>/docs</code>
+    /// page"). The words before the tag are an ordinary continuation; only the tag onward is
+    /// residue. Without this cut the scaffolding rule below rejected the whole completion (5 of 163
+    /// eval cases lost usable text that way). Fields that already contain markup keep it verbatim,
+    /// and a completion that opens with a tag is left whole so the scaffolding rule still drops it.
+    static func truncatingAtStrayMarkup(_ completion: String, precedingText: String) -> String {
+        guard !precedingText.contains("<"),
+              let tag = completion.range(of: markupTagPattern, options: .regularExpression) else {
+            return completion
+        }
+        let kept = completion[..<tag.lowerBound]
+        guard hasWordContent(String(kept)) else { return completion }
+        var trimmed = String(kept)
+        while let last = trimmed.unicodeScalars.last, CharacterSet.whitespaces.contains(last) {
+            trimmed.unicodeScalars.removeLast()
+        }
+        return trimmed
+    }
+
     static func looksLikeScaffolding(_ completion: String, precedingText: String) -> Bool {
         let trimmed = completion.trimmingCharacters(in: .whitespacesAndNewlines)
         let lowered = trimmed.lowercased()
@@ -123,7 +147,7 @@ enum CompletionContentPolicy {
             return true
         }
         // HTML tags in a field whose own text carries none.
-        if trimmed.range(of: #"</?[a-zA-Z][a-zA-Z0-9]*(\s[^<>]*)?>"#, options: .regularExpression) != nil,
+        if trimmed.range(of: markupTagPattern, options: .regularExpression) != nil,
            !precedingText.contains("<") {
             return true
         }

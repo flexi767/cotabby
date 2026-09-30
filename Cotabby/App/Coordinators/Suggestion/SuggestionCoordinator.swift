@@ -147,6 +147,10 @@ final class SuggestionCoordinator: ObservableObject {
     /// because both describe the in-flight request, and every reader is already guarded by the
     /// work-id check that makes "in flight" meaningful.
     var latestRequestPrecedingText: String?
+    /// The last request handed to the engine, kept so an unusable completion can be retried once
+    /// with its opening token banned (see `UnusableCompletionRetryPolicy`). The policy only uses it
+    /// while its generation still matches the live field.
+    var latestDispatchedRequest: SuggestionRequest?
     /// True once the continuation of the active suggestion has been prefetched, so the extra
     /// generation happens at most once per suggestion however many characters are typed through it.
     /// Cleared whenever the session is torn down or replaced.
@@ -167,6 +171,8 @@ final class SuggestionCoordinator: ObservableObject {
     var suggestionAnchorCache = SuggestionAnchorCache()
     static let anchorReuseDisabledDefaultsKey = "cotabbyAnchorReuseDisabled"
     static let speculativePrefetchDisabledDefaultsKey = "cotabbySpeculativePrefetchDisabled"
+    /// Hidden kill switch for `UnusableCompletionRetryPolicy`; the retry is on unless this is set.
+    static let unusableCompletionRetryDisabledDefaultsKey = "cotabbyUnusableCompletionRetryDisabled"
     static let continuationPrefetchDisabledDefaultsKey = "cotabbyContinuationPrefetchDisabled"
 
     /// Expected post-acceptance context. A speculative result may predate the live generation

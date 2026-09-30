@@ -86,6 +86,10 @@ struct SuggestionRequest: Equatable, Sendable {
     /// `RequestID.generate()` in `SuggestionRequestFactory`. Defaulted in the init so test fixtures
     /// that build requests directly do not need to change.
     let requestID: String
+    /// Set only on the one-shot retry the coordinator issues after this request's first completion
+    /// was unusable: the local engine masks this token from the first sample so the same prompt
+    /// yields its next-best opening. `nil` on every ordinary request, and a retry never retries.
+    var retryBannedSeedToken: Int32?
 
     init(
         context: FocusedInputContext,

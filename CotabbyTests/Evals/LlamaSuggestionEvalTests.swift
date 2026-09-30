@@ -81,6 +81,52 @@ final class LlamaSuggestionEvalTests: XCTestCase {
     /// because the two measure different things and mixing them would let fluent-but-ignorant
     /// prose average away a total failure to use context. `qualityScore` on this suite is the
     /// context-recall rate.
+    /// The retry's native hook on the real model: banning the first token of a completion must
+    /// change that completion's opening, and must work from the reused prompt KV (the second call
+    /// hits the cache path, since its prompt is identical to the first).
+    func test_bannedSeedTokenChangesTheOpening() async throws {
+        #if RUN_LLAMA_EVAL
+        let manager = try LlamaEvalRuntime.makeManager()
+        do {
+            try await manager.prepare()
+        } catch {
+            throw XCTSkip("No llama runtime available (\(error)).")
+        }
+        defer { manager.shutdownSync(timeoutSeconds: 5) }
+        let engine = LlamaSuggestionEngine(runtimeManager: manager)
+        let context = CotabbyTestFixtures.focusedInputContext(
+            applicationName: "Mail", bundleIdentifier: "com.apple.mail",
+            precedingText: "Thanks for the update. I will send you the report by ", trailingText: ""
+        )
+        var request = SuggestionRequestFactory.buildRequest(
+            context: context,
+            settings: CotabbyTestFixtures.settingsSnapshot(selectedEngine: .llamaOpenSource, selectedWordCountPreset: .twoToFour),
+            configuration: LlamaEvalRuntime.configuration,
+            clipboardContext: nil,
+            visualContextSummary: nil,
+            phraseMemory: .empty
+        ).request
+        let first = try await engine.generateSuggestion(for: request)
+        let token = try XCTUnwrap(first.firstToken)
+        XCTAssertFalse(first.isRetry)
+
+        request.retryBannedSeedToken = token
+        let retry = try await engine.generateSuggestion(for: request)
+        XCTAssertTrue(retry.isRetry)
+        XCTAssertNotEqual(retry.firstToken, token, "the banned opening was sampled again")
+        XCTAssertNotEqual(retry.rawText, first.rawText)
+        print("banned-seed: first=\(first.rawText.debugDescription) retry=\(retry.rawText.debugDescription)")
+
+        // The ban is one-shot: the next ordinary request is back to the greedy opening.
+        request.retryBannedSeedToken = nil
+        let again = try await engine.generateSuggestion(for: request)
+        XCTAssertEqual(again.firstToken, token)
+        XCTAssertEqual(again.rawText, first.rawText)
+        #else
+        throw XCTSkip("Real-model eval. Build with RUN_LLAMA_EVAL.")
+        #endif
+    }
+
     func test_reportRecallSuite() async throws {
         #if RUN_LLAMA_EVAL
         let manager = try LlamaEvalRuntime.makeManager()
@@ -198,10 +244,6 @@ final class LlamaSuggestionEvalTests: XCTestCase {
             phraseMemory: Self.phraseMemory(for: evalCase)
         ).request
 
-        let start = Date()
-        var result = try await engine.generateSuggestion(for: request)
-        var latency = Date().timeIntervalSince(start)
-
         let assessment: (String) -> CompletionSeamGuard.SpellingAssessment = { word in
             guard spellChecker.isTypo(word) else {
                 return .known
@@ -210,29 +252,52 @@ final class LlamaSuggestionEvalTests: XCTestCase {
                 ? .uncorrectableTypo
                 : .correctableTypo
         }
-        var shownText: String? = result.text.isEmpty ? nil : result.text
-        var suppressionStage: String? = result.text.isEmpty ? "normalizer" : nil
+        // Mirrors the coordinator's one-shot retry: an unusable first completion is generated once
+        // more with its opening token banned. Set the coordinator's kill-switch key in the test host's
+        // defaults (`com.jacobfu.tabby.testhost`) to measure the pipeline without it.
+        let retryDisabled = UserDefaults.standard.bool(forKey: SuggestionCoordinator.unusableCompletionRetryDisabledDefaultsKey)
+        var attemptRequest = request
+        var latency: TimeInterval = 0
+        while true {
+            let start = Date()
+            let result = try await engine.generateSuggestion(for: attemptRequest)
+            latency += Date().timeIntervalSince(start)
 
-        // Mirrors the coordinator's display-time seam guard.
-        if let candidate = shownText {
-            let verdict = CompletionSeamGuard.verdict(
-                precedingText: evalCase.precedingText, completion: candidate, spellingAssessment: assessment,
-                corrections: { spellChecker.nativeCorrections(for: $0) }
-            )
-            if verdict != .allow {
-                shownText = nil
-                suppressionStage = "seam-guard"
+            var shownText: String? = result.text.isEmpty ? nil : result.text
+            var suppressionStage: String? = result.text.isEmpty ? "normalizer" : nil
+            var failure = UnusableCompletionRetryPolicy.failure(forSuppressionReason: result.suppressionReason)
+
+            // Mirrors the coordinator's display-time seam guard.
+            if let candidate = shownText {
+                let verdict = CompletionSeamGuard.verdict(
+                    precedingText: evalCase.precedingText, completion: candidate, spellingAssessment: assessment,
+                    corrections: { spellChecker.nativeCorrections(for: $0) }
+                )
+                if verdict != .allow {
+                    shownText = nil
+                    suppressionStage = "seam-guard"
+                    if case .seamMisspelling = verdict { failure = .seamMisspelling }
+                }
             }
-        }
 
-        return LlamaEvalCaseResult(
-            evalCase: evalCase,
-            shownText: shownText,
-            rawText: result.rawText,
-            outcome: LlamaEvalScorer.outcome(shownText: shownText, for: evalCase),
-            suppressionStage: suppressionStage,
-            latencySeconds: latency
-        )
+            if let token = UnusableCompletionRetryPolicy.bannedToken(
+                for: failure, result: result, request: attemptRequest,
+                liveGeneration: result.generation, isDisabled: retryDisabled
+            ) {
+                attemptRequest.retryBannedSeedToken = token
+                continue
+            }
+
+            return LlamaEvalCaseResult(
+                evalCase: evalCase,
+                shownText: shownText,
+                rawText: result.rawText,
+                outcome: LlamaEvalScorer.outcome(shownText: shownText, for: evalCase),
+                suppressionStage: suppressionStage,
+                latencySeconds: latency,
+                retried: result.isRetry
+            )
+        }
     }
 
     /// Puts a case's raw screen text through the same passes the live pipeline applies for a local

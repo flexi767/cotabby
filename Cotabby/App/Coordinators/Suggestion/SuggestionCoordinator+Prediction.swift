@@ -398,6 +398,7 @@ extension SuggestionCoordinator {
         // scheduled drain callback while dropping the old request's partial and rendered text.
         suggestionStreamingState.beginGeneration()
         beginTypingPrediction(for: request)
+        latestDispatchedRequest = request
         // Presentation remains opt-in, but on-device lookahead needs partials internally to know
         // whether a newly typed character still agrees with the request already being decoded.
         let shouldStreamPartials = settingsSnapshot.streamSuggestionsWhileGenerating
@@ -799,6 +800,31 @@ extension SuggestionCoordinator {
         )
     }
 
+    /// Re-runs the same request once with the failed opening token banned, when
+    /// `UnusableCompletionRetryPolicy` allows it. The retry reuses this work ID, so any keystroke,
+    /// focus change, or dismissal that retires the work also drops the retry.
+    private func retryWithBannedOpening(
+        after result: SuggestionResult,
+        failure: UnusableCompletionRetryPolicy.Failure?,
+        workID: UInt64,
+        liveContext: FocusedInputContext
+    ) {
+        guard workController.isCurrent(workID),
+              let token = UnusableCompletionRetryPolicy.bannedToken(
+                  for: failure,
+                  result: result,
+                  request: latestDispatchedRequest,
+                  liveGeneration: liveContext.generation,
+                  isDisabled: userDefaults.bool(forKey: Self.unusableCompletionRetryDisabledDefaultsKey)
+              ),
+              var request = latestDispatchedRequest else { return }
+        request.retryBannedSeedToken = token
+        logStage("retry-banned-opening", workID: workID, generation: result.generation,
+                 message: "Retrying once with the opening token banned after \(String(describing: failure)).",
+                 rawOutput: result.rawText, normalizedOutput: result.text)
+        dispatchGeneration(request: request, workID: workID)
+    }
+
     private static func seamSuppressionReason(for verdict: CompletionSeamGuard.Verdict) -> String {
         switch verdict {
         case .seamMisspelling:
@@ -987,6 +1013,7 @@ extension SuggestionCoordinator {
                 logStage("word-completion-fallback", workID: workID, generation: result.generation,
                          message: "Offered a local exact-prefix word ending.", normalizedOutput: fallback)
             } else {
+                let retryFailure: UnusableCompletionRetryPolicy.Failure?
                 if case let .suppress(verdict) = decision {
                     clearSuggestion()
                     hideOverlay(reason: "Overlay hidden because the completion failed the seam guard.")
@@ -995,9 +1022,16 @@ extension SuggestionCoordinator {
                     logStage("seam-suppressed", workID: workID, generation: result.generation,
                              message: "Suppressed completion at the caret seam: \(verdict).",
                              rawOutput: result.rawText, normalizedOutput: result.text)
+                    if case .seamMisspelling = verdict {
+                        retryFailure = .seamMisspelling
+                    } else {
+                        retryFailure = nil
+                    }
                 } else {
                     discardEmptyResult(result, workID: workID)
+                    retryFailure = UnusableCompletionRetryPolicy.failure(forSuppressionReason: result.suppressionReason)
                 }
+                retryWithBannedOpening(after: result, failure: retryFailure, workID: workID, liveContext: liveContext)
                 return
             }
         }

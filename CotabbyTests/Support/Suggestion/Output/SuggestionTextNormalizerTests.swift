@@ -53,6 +53,13 @@ final class SuggestionTextNormalizerTests: XCTestCase {
 
     // MARK: - Backend scaffolding and prompt echo
 
+    func test_normalizeDetailed_keepsTheProseBeforeStrayMarkup() {
+        let request = CotabbyTestFixtures.suggestionRequest(prefixText: "My only suggestion would be to ")
+        let result = SuggestionTextNormalizer.normalizeDetailed("add a link to the <code>/docs</code> page in", for: request)
+        XCTAssertEqual(result, SuggestionNormalizationResult(text: "add a link to the", suppression: nil))
+    }
+
+
     func test_normalize_removesChatTemplateMarkersAndPromptEcho() {
         let request = CotabbyTestFixtures.suggestionRequest(prompt: "PROMPT_PAYLOAD")
 

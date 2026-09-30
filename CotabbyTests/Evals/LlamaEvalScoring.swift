@@ -286,6 +286,9 @@ struct LlamaEvalCaseResult {
     let outcome: LlamaEvalOutcome
     let suppressionStage: String?
     let latencySeconds: Double
+    /// True when the first completion was unusable and the shown (or suppressed) text came from the
+    /// one-shot retry with the opening token banned (see `UnusableCompletionRetryPolicy`).
+    var retried = false
 }
 
 struct LlamaEvalReport {
@@ -387,6 +390,7 @@ struct LlamaEvalReport {
                 "shown": result.shownText ?? NSNull(),
                 "raw": result.rawText,
                 "suppressionStage": result.suppressionStage ?? NSNull(),
+                "retried": result.retried,
                 "latencyMs": result.latencySeconds * 1000
             ]
         }
