@@ -869,7 +869,7 @@ extension SuggestionCoordinator {
     /// Applies what past outcomes say to a freshly built request: measure the model's confidence
     /// while the usage log records it, and raise the confidence bar in an app where the writer has
     /// been ignoring suggestions.
-    private func withOutcomeFeedback(_ request: SuggestionRequest) -> SuggestionRequest {
+    func withOutcomeFeedback(_ request: SuggestionRequest) -> SuggestionRequest {
         var request = request
         request.measuresConfidence = suggestionUsageLog.isEnabled
         request.confidenceFloorOverride = adaptiveConfidenceFloor.floor(

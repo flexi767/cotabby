@@ -298,6 +298,8 @@ final class LlamaSuggestionEvalTests: XCTestCase {
         // defaults (`com.jacobfu.tabby.testhost`) to measure the pipeline without it.
         let retryDisabled = UserDefaults.standard.bool(forKey: SuggestionCoordinator.unusableCompletionRetryDisabledDefaultsKey)
         var attemptRequest = request
+        // Logprobs are computed alongside sampling and do not change what is sampled.
+        attemptRequest.measuresConfidence = true
         var latency: TimeInterval = 0
         while true {
             let start = Date()
@@ -336,7 +338,8 @@ final class LlamaSuggestionEvalTests: XCTestCase {
                 outcome: LlamaEvalScorer.outcome(shownText: shownText, for: evalCase),
                 suppressionStage: suppressionStage,
                 latencySeconds: latency,
-                retried: result.isRetry
+                retried: result.isRetry,
+                averageLogprob: result.averageLogprob
             )
         }
     }

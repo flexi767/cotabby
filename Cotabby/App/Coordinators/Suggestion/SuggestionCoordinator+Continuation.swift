@@ -12,6 +12,8 @@ extension SuggestionCoordinator {
         let sourceSession: ActiveSuggestionSession
         var text: String?
         var latency: TimeInterval = 0
+        /// The prefetched completion's confidence, kept for the usage log.
+        var averageLogprob: Double?
         var awaitingCommit = false
         /// Set once the exact target published while this request was still running. The
         /// publication poll stands down at that point, so nothing else will request a prediction
@@ -56,10 +58,10 @@ extension SuggestionCoordinator {
         // Construct a hypothetical request without materializing it into ContextBuffer: that
         // buffer belongs to observed editor text, and advancing it here would stale the visible word.
         let context = FocusedInputContext(snapshot: plan.requestSnapshot, generation: session.baseContext.generation)
-        let request = SuggestionRequestFactory.buildRequest(context: context, settings: settingsSnapshot,
+        let request = withOutcomeFeedback(SuggestionRequestFactory.buildRequest(context: context, settings: settingsSnapshot,
             configuration: configuration, clipboardContext: pinnedClipboardContext(rawContext: rawContext),
             visualContextSummary: permissionManager.screenRecordingGranted
-                ? visualContextCoordinator.excerpt(for: session.baseContext) : nil).request
+                ? visualContextCoordinator.excerpt(for: session.baseContext) : nil).request)
         continuationWorkController.replaceDebouncedWork(delayMilliseconds: 0) { [weak self] workID in
             guard let self else { return }
             await self.awaitCachedGenerationContextResetIfNeeded()
@@ -75,6 +77,7 @@ extension SuggestionCoordinator {
                 }
                 self.preparedContinuation?.text = plan.continuation(from: result.text)
                 self.preparedContinuation?.latency = result.latency
+                self.preparedContinuation?.averageLogprob = result.averageLogprob
                 self.attachPreparedContinuationOrAwaitPublication()
             } catch {
                 guard self.continuationWorkController.isCurrent(workID) else { return }
@@ -154,7 +157,7 @@ extension SuggestionCoordinator {
             let adjustedText = trimsSpace ? String(text.drop(while: { $0 == " " })) : text
             let context = self.interactionState.materializeContext(from: live)
             await self.apply(result: SuggestionResult(generation: context.generation, rawText: adjustedText,
-                text: adjustedText, latency: prepared.latency), workID: workID)
+                text: adjustedText, latency: prepared.latency, averageLogprob: prepared.averageLogprob), workID: workID)
         }
         return true
     }

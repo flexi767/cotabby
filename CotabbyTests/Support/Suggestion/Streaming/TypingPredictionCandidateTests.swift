@@ -62,6 +62,19 @@ final class TypingPredictionCandidateTests: XCTestCase {
         XCTAssertNil(candidate.expiration(in: snapshot("I'll send y")))
     }
 
+    func testRebasingKeepsConfidenceButNeverTheRetryToken() {
+        let source = snapshot("I'll send ")
+        var candidate = candidate(source)
+        let prediction = SuggestionResult(generation: 1, rawText: "you the report", text: "you the report",
+                                          latency: 0.1, firstToken: 7, isRetry: true, averageLogprob: -0.8)
+        XCTAssertTrue(candidate.receive(prediction, final: false))
+        XCTAssertTrue(candidate.append("yo", in: source, at: 1))
+        let rebased = candidate.rebased(prediction, in: snapshot("I'll send yo"), generation: 2)
+        XCTAssertEqual(rebased?.averageLogprob, -0.8)
+        XCTAssertEqual(rebased?.isRetry, true)
+        XCTAssertNil(rebased?.firstToken, "the token belongs to the old caret; retrying it here would ban the wrong opening")
+    }
+
     func testResultsFromAnotherGenerationAreNeitherStoredNorRebased() {
         let source = snapshot("I'll send ")
         var candidate = candidate(source)

@@ -90,8 +90,11 @@ nonisolated struct TypingPredictionCandidate {
                  generation: UInt64) -> SuggestionResult? {
         guard result.generation == context.generation, isPublished(in: snapshot),
               result.text.hasPrefix(typedText) else { return nil }
+        // Confidence and retry provenance describe the same completion and carry over. The first
+        // token does not: it belongs to the old caret, so a rebased result must never be retried.
         return SuggestionResult(generation: generation, rawText: result.rawText,
             text: String(result.text.dropFirst(typedText.count)), latency: result.latency,
-            suppressionReason: result.suppressionReason)
+            suppressionReason: result.suppressionReason, isRetry: result.isRetry,
+            averageLogprob: result.averageLogprob)
     }
 }

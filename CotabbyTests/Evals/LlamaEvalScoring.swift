@@ -289,6 +289,10 @@ struct LlamaEvalCaseResult {
     /// True when the first completion was unusable and the shown (or suppressed) text came from the
     /// one-shot retry with the opening token banned (see `UnusableCompletionRetryPolicy`).
     var retried = false
+    /// Mean token log-probability of the completion behind `shownText` (nil when nothing was
+    /// generated). Measured, never used to gate, so the eval can say whether confidence separates
+    /// right from wrong before any floor is switched on.
+    var averageLogprob: Double?
 }
 
 struct LlamaEvalReport {
@@ -391,6 +395,7 @@ struct LlamaEvalReport {
                 "raw": result.rawText,
                 "suppressionStage": result.suppressionStage ?? NSNull(),
                 "retried": result.retried,
+                "averageLogprob": result.averageLogprob ?? NSNull(),
                 "latencyMs": result.latencySeconds * 1000
             ]
         }
