@@ -90,6 +90,12 @@ struct SuggestionRequest: Equatable, Sendable {
     /// was unusable: the local engine masks this token from the first sample so the same prompt
     /// yields its next-best opening. `nil` on every ordinary request, and a retry never retries.
     var retryBannedSeedToken: Int32?
+    /// Ask the local engine for the completion's mean token log-probability even though no floor
+    /// is set. The coordinator sets it only while the opt-in usage log is recording.
+    var measuresConfidence = false
+    /// A confidence floor for this request only, overriding the global one. Set by
+    /// `AdaptiveConfidenceFloor` after the writer has ignored suggestions in this app.
+    var confidenceFloorOverride: Double?
 
     init(
         context: FocusedInputContext,

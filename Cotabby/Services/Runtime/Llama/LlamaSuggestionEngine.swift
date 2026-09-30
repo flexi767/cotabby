@@ -208,7 +208,8 @@ final class LlamaSuggestionEngine {
                 // the lack of one) is the model's own word boundary.
                 spacingIsExact: true,
                 firstToken: output.firstToken,
-                isRetry: request.retryBannedSeedToken != nil
+                isRetry: request.retryBannedSeedToken != nil,
+                averageLogprob: output.averageLogprob
             )
         } catch is CancellationError {
             CotabbyLogger.suggestion.debug("Llama generation cancelled", metadata: baseMetadata)
@@ -282,10 +283,11 @@ final class LlamaSuggestionEngine {
                 precedingText: request.context.precedingText,
                 trailingText: request.context.trailingText
             ),
-            confidenceFloor: resolvedConfidenceFloor(),
+            confidenceFloor: request.confidenceFloorOverride ?? resolvedConfidenceFloor(),
             sentenceStopMinimumWords: request.wordRange?.lowWords ?? 0,
             stopAtArgmaxEOG: resolvedStopAtArgmaxEOG(),
-            bannedSeedToken: request.retryBannedSeedToken
+            bannedSeedToken: request.retryBannedSeedToken,
+            measuresConfidence: request.measuresConfidence
         )
     }
 }

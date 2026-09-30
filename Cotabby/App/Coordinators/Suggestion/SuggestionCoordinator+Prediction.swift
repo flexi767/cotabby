@@ -131,7 +131,7 @@ extension SuggestionCoordinator {
             keyboardLanguageCode: keyboardLanguageCodeProvider()
         )
         latestGenerationNumber = context.generation
-        let request = requestBuildResult.request
+        let request = withOutcomeFeedback(requestBuildResult.request)
         latestRequestID = request.requestID
         latestRequestPrecedingText = request.context.precedingText
 
@@ -295,7 +295,7 @@ extension SuggestionCoordinator {
             keyboardLanguageCode: keyboardLanguageCodeProvider()
         )
         latestGenerationNumber = context.generation
-        let request = requestBuildResult.request
+        let request = withOutcomeFeedback(requestBuildResult.request)
         latestRequestID = request.requestID
         latestRequestPrecedingText = request.context.precedingText
 
@@ -800,6 +800,19 @@ extension SuggestionCoordinator {
         )
     }
 
+    /// Applies what past outcomes say to a freshly built request: measure the model's confidence
+    /// while the usage log records it, and raise the confidence bar in an app where the writer has
+    /// been ignoring suggestions.
+    private func withOutcomeFeedback(_ request: SuggestionRequest) -> SuggestionRequest {
+        var request = request
+        request.measuresConfidence = suggestionUsageLog.isEnabled
+        request.confidenceFloorOverride = adaptiveConfidenceFloor.floor(
+            for: request.context.bundleIdentifier,
+            now: Date()
+        )
+        return request
+    }
+
     /// Hands one presentation outcome to the opt-in usage log, anchored at the live caret the
     /// outcome applies to. A no-op while the log is off.
     private func recordUsage(of result: SuggestionResult, shownText: String?, reason: String?, context: FocusedInputContext) {
@@ -809,7 +822,8 @@ extension SuggestionCoordinator {
             suppressionReason: reason,
             rawText: result.rawText,
             isRetry: result.isRetry,
-            latency: result.latency
+            latency: result.latency,
+            averageLogprob: result.averageLogprob
         )
     }
 

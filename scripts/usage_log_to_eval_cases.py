@@ -135,6 +135,21 @@ def main():
         print(f"accepted {outcomes['accepted'] + outcomes['acceptedPartially']}/{shown} shown; "
               f"typed through by hand {outcomes['typedThrough']}; right either way {right}/{shown} "
               f"({100 * right / shown:.1f}%)")
+    # What a confidence floor would cost and buy: for suggestions the writer saw and reacted to,
+    # how often they were right at each confidence level. A floor belongs where "right" collapses.
+    rated = [r for r in records if r.get("averageLogprob") is not None
+             and r["outcome"] in ("accepted", "acceptedPartially", "typedThrough", "ignored")]
+    if rated:
+        print("confidence (mean token logprob) -> right / reacted-to:")
+        edges = [-0.5, -1.0, -1.5, -2.0, -2.5, -3.0, float("-inf")]
+        upper = 0.0
+        for lower in edges:
+            bucket = [r for r in rated if lower <= r["averageLogprob"] < upper or (upper == 0.0 and r["averageLogprob"] >= 0)]
+            if bucket:
+                right_count = sum(r["outcome"] != "ignored" for r in bucket)
+                print(f"  [{lower:>5}, {upper:>5}): {right_count}/{len(bucket)} ({100 * right_count / len(bucket):.0f}%)")
+            upper = lower
+
     retried = [r for r in records if r.get("isRetry")]
     if retried:
         retried_shown = [r for r in retried if r.get("shownText") is not None]

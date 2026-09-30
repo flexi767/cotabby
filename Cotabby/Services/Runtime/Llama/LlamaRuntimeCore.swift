@@ -449,7 +449,7 @@ nonisolated final class LlamaRuntimeCore: @unchecked Sendable {
     ) -> LlamaGenerationOutput {
         // The average is only meaningful when the engine actually computed per-token logprobs,
         // which is keyed on the floor being enabled (see setComputeLogprob at sequence setup).
-        let averageLogprob: Double? = options.confidenceFloor > -.infinity && tokensGenerated > 0
+        let averageLogprob: Double? = options.computesLogprob && tokensGenerated > 0
             ? sumLogprob / Double(tokensGenerated)
             : nil
         if Self.shouldSuppress(sumLogprob: sumLogprob, tokensGenerated: tokensGenerated, options: options) {
@@ -607,10 +607,7 @@ nonisolated final class LlamaRuntimeCore: @unchecked Sendable {
                             // engine; only compute them when the confidence gate would actually
                             // read them. Re-assert per request: the floor is not part of the
                             // sampling fingerprint, so a reused sequence must not carry a stale flag.
-                            engine.setComputeLogprob(
-                                autocompleteSequenceID,
-                                options.confidenceFloor > -.infinity
-                            )
+                            engine.setComputeLogprob(autocompleteSequenceID, options.computesLogprob)
                             setAbortTarget(autocompleteSequenceID)
                             var mutableRemaining = remaining
                             let status = engine.decodePrompt(
@@ -676,7 +673,7 @@ nonisolated final class LlamaRuntimeCore: @unchecked Sendable {
         // Skip the engine's per-token log-probability work (two O(vocab) passes per token)
         // whenever confidence suppression is disabled — the shipping default — since the value
         // would be summed and then discarded.
-        engine.setComputeLogprob(seqID, options.confidenceFloor > -.infinity)
+        engine.setComputeLogprob(seqID, options.computesLogprob)
 
         setAbortTarget(seqID)
         var tokens = promptTokens

@@ -10,6 +10,14 @@ extension SuggestionCoordinator {
     /// Reconciles coordinator state with the current permission and focus environment.
     func start() {
         CotabbyLogger.suggestion.info("Suggestion coordinator starting")
+        // The adaptive floor needs finished outcomes even when the usage log is not writing. The
+        // log then tracks in memory only, and the floor ignores outcomes unless it is switched on.
+        let adaptiveFloorEnabled = userDefaults.bool(forKey: AdaptiveConfidenceFloor.enabledDefaultsKey)
+        suggestionUsageLog.tracksOutcomesWhileOff = adaptiveFloorEnabled
+        suggestionUsageLog.onOutcome = { [weak self] record in
+            guard adaptiveFloorEnabled else { return }
+            self?.adaptiveConfidenceFloor.record(record.outcome, bundleIdentifier: record.bundleIdentifier, now: Date())
+        }
         reconcileWithCurrentEnvironment()
     }
 

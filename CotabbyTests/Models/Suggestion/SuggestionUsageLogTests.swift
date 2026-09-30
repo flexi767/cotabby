@@ -169,6 +169,27 @@ final class SuggestionUsageLogTests: XCTestCase {
         XCTAssertEqual(record.typedAfter.count, SuggestionUsageRecord.typedAfterLimit)
     }
 
+    func testConfidenceIsRecordedWithTheOutcome() throws {
+        let log = makeLog()
+        log.recordGeneration(context: context("See you "), shownText: "soon", suppressionReason: nil,
+                             rawText: "soon", isRetry: false, latency: 0.1, averageLogprob: -0.42)
+        log.finishPending()
+        XCTAssertEqual(try records(log).first?.averageLogprob, -0.42)
+    }
+
+    func testTrackingWhileOffReportsOutcomesButWritesNothing() throws {
+        let log = makeLog(enabled: false)
+        log.tracksOutcomesWhileOff = true
+        var outcomes: [SuggestionUsageRecord.Outcome] = []
+        log.onOutcome = { outcomes.append($0.outcome) }
+        show(log, at: "See you ", "tomorrow")
+        log.observe(elementIdentifier: "field", precedingText: "See you later")
+        log.finishPending()
+        XCTAssertEqual(outcomes, [.ignored])
+        XCTAssertEqual(try records(log), [])
+        XCTAssertEqual(log.recordCount, 0)
+    }
+
     // MARK: - Storage
 
     func testCountSurvivesRelaunchAndDeleteRemovesEverything() throws {

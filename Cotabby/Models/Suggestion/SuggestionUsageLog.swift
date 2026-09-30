@@ -14,6 +14,8 @@ import Foundation
 /// - The file stays on this Mac, next to the app's other support files, and is never sent anywhere.
 ///   Settings shows the record count and deletes the file on request.
 /// - Text is bounded per record (a tail before the caret, a head after it), not whole documents.
+/// - With `AdaptiveConfidenceFloor` on and the log off, outcomes are still tracked so the floor can
+///   react, but only in memory: the one pending record is handed to `onOutcome` and discarded.
 
 /// One finished suggestion outcome, one JSON line in the log.
 struct SuggestionUsageRecord: Codable, Equatable, Sendable {
@@ -46,6 +48,9 @@ struct SuggestionUsageRecord: Codable, Equatable, Sendable {
     /// When this outcome came from a retry, the reason its first attempt was unusable.
     var retriedAfter: String?
     var latencyMilliseconds: Int
+    /// Mean token log-probability of the completion, when the engine measured it (local engine,
+    /// log on). The pair (confidence, outcome) is what a confidence floor is tuned from.
+    var averageLogprob: Double?
     var outcome: Outcome
     var acceptedCharacters: Int
     /// What the field gained after the caret position the suggestion was made for.
@@ -93,6 +98,11 @@ final class SuggestionUsageLog: ObservableObject {
     @Published private(set) var recordCount: Int
 
     let fileURL: URL?
+    /// Track outcomes in memory even while writing is off, so `onOutcome` still fires. Set by the
+    /// coordinator when `AdaptiveConfidenceFloor` is on; nothing is written unless `isEnabled`.
+    var tracksOutcomesWhileOff = false
+    /// Receives every finished record, written or not.
+    var onOutcome: ((SuggestionUsageRecord) -> Void)?
     private let userDefaults: UserDefaults
     private let writeQueue = DispatchQueue(label: "com.jacobfu.tabby.suggestion-usage-log")
     private var pending: Pending?
@@ -130,8 +140,8 @@ final class SuggestionUsageLog: ObservableObject {
         guard enabled != isEnabled else { return }
         isEnabled = enabled
         userDefaults.set(enabled, forKey: Self.enabledDefaultsKey)
-        // Switching off stops observation at once; the unfinished record is dropped, not written.
-        if !enabled { pending = nil }
+        // Switching off stops recording at once; the unfinished record is dropped, not written.
+        if !enabled, !tracksOutcomesWhileOff { pending = nil }
     }
 
     /// Removes every stored record, the rotated file included.
@@ -164,9 +174,10 @@ final class SuggestionUsageLog: ObservableObject {
         rawText: String,
         isRetry: Bool,
         latency: TimeInterval,
+        averageLogprob: Double? = nil,
         now: Date = Date()
     ) {
-        guard isEnabled,
+        guard isEnabled || tracksOutcomesWhileOff,
               Self.isLoggable(bundleIdentifier: context.bundleIdentifier, isSecure: context.isSecure,
                               isIntegratedTerminal: context.isIntegratedTerminal) else { return }
         var retriedAfter: String?
@@ -189,6 +200,7 @@ final class SuggestionUsageLog: ObservableObject {
             isRetry: isRetry,
             retriedAfter: retriedAfter,
             latencyMilliseconds: Int((latency * 1000).rounded()),
+            averageLogprob: averageLogprob,
             outcome: shownText == nil ? .suppressed : .abandoned,
             acceptedCharacters: 0,
             typedAfter: "",
@@ -236,7 +248,8 @@ final class SuggestionUsageLog: ObservableObject {
             typedAfter: typedAfter,
             acceptedCharacters: record.acceptedCharacters
         )
-        append(record)
+        onOutcome?(record)
+        if isEnabled { append(record) }
     }
 
     private func append(_ record: SuggestionUsageRecord) {

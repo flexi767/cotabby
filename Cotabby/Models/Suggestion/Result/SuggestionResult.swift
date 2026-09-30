@@ -25,6 +25,8 @@ struct SuggestionResult: Equatable, Sendable {
     let firstToken: Int32?
     /// True when this result came from a one-shot retry rather than the first attempt.
     let isRetry: Bool
+    /// Mean per-token log-probability of the completion, when the local engine computed it.
+    let averageLogprob: Double?
 
     // This immutable Sendable value is also constructed by pure candidate-reconciliation rules.
     // Construction needs no UI actor; engine delivery and presentation remain main-actor owned.
@@ -36,7 +38,8 @@ struct SuggestionResult: Equatable, Sendable {
         suppressionReason: String? = nil,
         spacingIsExact: Bool = false,
         firstToken: Int32? = nil,
-        isRetry: Bool = false
+        isRetry: Bool = false,
+        averageLogprob: Double? = nil
     ) {
         self.generation = generation
         self.rawText = rawText
@@ -46,5 +49,6 @@ struct SuggestionResult: Equatable, Sendable {
         self.spacingIsExact = spacingIsExact
         self.firstToken = firstToken
         self.isRetry = isRetry
+        self.averageLogprob = averageLogprob
     }
 }

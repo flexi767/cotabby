@@ -153,6 +153,9 @@ final class SuggestionCoordinator: ObservableObject {
     /// with its opening token banned (see `UnusableCompletionRetryPolicy`). The policy only uses it
     /// while its generation still matches the live field.
     var latestDispatchedRequest: SuggestionRequest?
+    /// Per-app confidence bar raised after ignored suggestions (see `AdaptiveConfidenceFloor`).
+    /// Fed from `suggestionUsageLog`'s finished outcomes, consulted when each request is built.
+    var adaptiveConfidenceFloor = AdaptiveConfidenceFloor()
     /// True once the continuation of the active suggestion has been prefetched, so the extra
     /// generation happens at most once per suggestion however many characters are typed through it.
     /// Cleared whenever the session is torn down or replaced.

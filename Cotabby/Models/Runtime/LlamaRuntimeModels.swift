@@ -215,6 +215,14 @@ struct LlamaGenerationOptions: Equatable, Sendable {
     /// attempt opened with an unusable token, so the same prompt yields its next-best opening.
     /// Not part of the sampling fingerprint: it touches one sample and never the retained KV.
     var bannedSeedToken: Int32?
+
+    /// Compute per-token log-probabilities even with the confidence floor off, so the average can
+    /// be recorded next to what the writer did with the suggestion. That record is what a floor
+    /// gets tuned from. Costs two O(vocab) passes per token, so it is on only while measuring.
+    var measuresConfidence = false
+
+    /// Whether the engine must compute per-token log-probabilities for this generation.
+    var computesLogprob: Bool { confidenceFloor > -.infinity || measuresConfidence }
 }
 
 /// One generation's text plus the confidence signals the caller needs for suppression accounting.
