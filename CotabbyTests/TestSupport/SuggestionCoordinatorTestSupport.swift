@@ -341,6 +341,13 @@ func makeCoordinatorRig(
         phraseMemoryStore: PhraseMemoryStore(
             defaults: UserDefaults(suiteName: "CotabbyTests.rig.phrases.\(UUID().uuidString)") ?? .standard
         ),
+        // Same isolation for the usage log: its own defaults suite (so it starts off) and a file in
+        // the test's temporary directory, never the app's real log.
+        suggestionUsageLog: SuggestionUsageLog(
+            userDefaults: UserDefaults(suiteName: "CotabbyTests.rig.usage.\(UUID().uuidString)") ?? .standard,
+            fileURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent("CotabbyTests-usage-\(UUID().uuidString).jsonl")
+        ),
         userDefaults: UserDefaults(suiteName: "CotabbyTests.rig.\(UUID().uuidString)") ?? .standard
     )
     let rig = CoordinatorRig(

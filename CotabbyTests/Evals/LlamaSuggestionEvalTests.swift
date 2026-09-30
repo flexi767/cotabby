@@ -127,6 +127,47 @@ final class LlamaSuggestionEvalTests: XCTestCase {
         #endif
     }
 
+    /// Scores the pipeline on cases built from the writer's own opt-in usage log
+    /// (`scripts/usage_log_to_eval_cases.py`): each case is a real caret position, and the reference
+    /// continuation is what the writer actually typed next. The case file holds private text, so it
+    /// lives in the gitignored `build/eval/usage-cases.json` and never in the test bundle; without
+    /// it this test skips.
+    func test_reportUsageSuite() async throws {
+        #if RUN_LLAMA_EVAL
+        guard let repoRoot = Self.repositoryRoot(startingAt: URL(fileURLWithPath: #filePath)) else {
+            throw XCTSkip("Could not find project.yml above the eval source path")
+        }
+        let casesURL = repoRoot.appendingPathComponent("build/eval/usage-cases.json")
+        guard FileManager.default.fileExists(atPath: casesURL.path) else {
+            throw XCTSkip("No build/eval/usage-cases.json. Run scripts/usage_log_to_eval_cases.py first.")
+        }
+        let cases = try LlamaEvalCase.loadDataset(from: casesURL)
+        let manager = try LlamaEvalRuntime.makeManager()
+        do {
+            try await manager.prepare()
+        } catch {
+            throw XCTSkip("No llama runtime available (\(error)).")
+        }
+        defer { manager.shutdownSync(timeoutSeconds: 5) }
+        let engine = LlamaSuggestionEngine(runtimeManager: manager)
+        let spellChecker = CurrentWordSpellChecker()
+
+        var results: [LlamaEvalCaseResult] = []
+        for evalCase in cases {
+            results.append(try await Self.runCase(evalCase, engine: engine, spellChecker: spellChecker))
+        }
+        let report = LlamaEvalReport(
+            modelLabel: (manager.diagnostics.modelFilePath.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "unknown-model") + " [usage]",
+            results: results
+        )
+        // Aggregates only: the per-case lines would echo the writer's private text into test logs.
+        print(report.rendered().components(separatedBy: "\n").prefix(while: { !$0.hasPrefix("  !!") }).joined(separator: "\n"))
+        try Self.writeArtifact(report)
+        #else
+        throw XCTSkip("Real-model eval. Build with RUN_LLAMA_EVAL.")
+        #endif
+    }
+
     func test_reportRecallSuite() async throws {
         #if RUN_LLAMA_EVAL
         let manager = try LlamaEvalRuntime.makeManager()
@@ -361,6 +402,7 @@ final class LlamaSuggestionEvalTests: XCTestCase {
         let stem = report.modelLabel
             .replacingOccurrences(of: ".gguf", with: "")
             .replacingOccurrences(of: " [recall]", with: "-recall")
+            .replacingOccurrences(of: " [usage]", with: "-usage")
         let url = directory.appendingPathComponent("llama-eval-\(stem).json")
         try report.jsonArtifact().write(to: url)
         print("Eval artifact written to \(url.path)")

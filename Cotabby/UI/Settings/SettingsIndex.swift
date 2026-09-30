@@ -61,6 +61,7 @@ enum SettingsItem: String, CaseIterable, Identifiable {
     case extendedContext
     case contextLivePreview
     case learnedPhrases
+    case suggestionUsageLog
     // Engine & Model
     case engine
     case appleIntelligenceAvailability
@@ -152,6 +153,7 @@ enum SettingsItem: String, CaseIterable, Identifiable {
         case .extendedContext: return "Extended Context"
         case .contextLivePreview: return "Live Preview"
         case .learnedPhrases: return "Learned Phrases"
+        case .suggestionUsageLog: return "Suggestion Usage Log"
         case .engine: return "Engine"
         case .appleIntelligenceAvailability: return "Apple Intelligence Availability"
         case .modelStatus: return "Model Status"
@@ -237,6 +239,7 @@ enum SettingsItem: String, CaseIterable, Identifiable {
         case .extendedContext: return "doc.text"
         case .contextLivePreview: return "text.cursor"
         case .learnedPhrases: return "text.book.closed"
+        case .suggestionUsageLog: return "list.bullet.clipboard"
         case .engine: return "cpu"
         case .appleIntelligenceAvailability: return "apple.logo"
         case .modelStatus: return "info.circle"
@@ -294,7 +297,7 @@ enum SettingsItem: String, CaseIterable, Identifiable {
         case .length, .acceptPunctuation, .addSpaceAfterAccept, .name, .languages, .customRules,
              .hideSuggestionsOnTypo, .offerTypoCorrections, .spellingDictionaries, .automaticallyFixTypos:
             return .writing
-        case .extendedContext, .contextLivePreview, .learnedPhrases:
+        case .extendedContext, .contextLivePreview, .learnedPhrases, .suggestionUsageLog:
             return .context
         case .engine, .appleIntelligenceAvailability, .modelStatus, .selectedModel,
              .lowPowerModeAutoDisable, .powerBasedModelSwitching, .batteryModel, .pluggedInModel,
@@ -365,6 +368,7 @@ enum SettingsItem: String, CaseIterable, Identifiable {
         case .extendedContext: return "A glossary or notes sent with every suggestion."
         case .contextLivePreview: return "A real field that exercises the full pipeline."
         case .learnedPhrases: return "Sentences you type often, reused in suggestions."
+        case .suggestionUsageLog: return "A private record of suggestions and what you typed, for measuring quality."
         case .engine: return "Apple Intelligence, bundled Open Source, or a local endpoint."
         case .appleIntelligenceAvailability: return "Whether this Mac can run Apple Intelligence."
         case .modelStatus: return "Whether the local model is loaded and ready."
@@ -540,6 +544,9 @@ enum SettingsItem: String, CaseIterable, Identifiable {
             return ["learn", "learned", "phrases", "history", "memory", "repeat", "repeated",
                     "habits", "my words", "forget", "typing history", "personalization",
                     "remember", "frequent", "snippets", "sign-off"]
+        case .suggestionUsageLog:
+            return ["usage", "log", "record", "evaluation", "eval", "quality", "accepted", "ignored",
+                    "measure", "statistics", "delete", "privacy", "history"]
         case .engine:
             return ["engine", "apple intelligence", "open source", "llama", "backend",
                     "provider", "runtime", "foundation models", "oss", "local", "endpoint",

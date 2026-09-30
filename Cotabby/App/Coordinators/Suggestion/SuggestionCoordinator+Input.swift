@@ -78,6 +78,12 @@ extension SuggestionCoordinator {
         // keystroke stream on purpose: the signal that a message was sent is the field going empty,
         // which produces a focus snapshot but no keystroke Cotabby can see.
         observeTypedTextForPhraseMemory(snapshot)
+        // The usage log follows the same stream for the same reason: what the writer typed after a
+        // suggestion (and whether they sent it) only shows up as the field's text changing.
+        suggestionUsageLog.observe(
+            elementIdentifier: snapshot.context?.elementIdentifier,
+            precedingText: snapshot.context?.precedingText
+        )
         // Start capturing visual context for a newly focused input even when predictions are
         // temporarily disabled by transient field states (e.g., "text is selected"). The visual
         // service rejects secure fields. Skip capture when the subsystem is hard-disabled (globally off,

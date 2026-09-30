@@ -103,6 +103,7 @@
 		1092E77D9D92DAC4808ABF9A /* GhostFontResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3BB26526298A85454330591 /* GhostFontResolver.swift */; };
 		109F9BD7E1AE3E7FB0C712AA /* GhostTextLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EB202C5AD6079174A14330C /* GhostTextLayoutTests.swift */; };
 		10D398D24FB6C24C3CA88D0A /* BundledRuntimeLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1AB5EBB44EE64EB3EB1426F /* BundledRuntimeLocator.swift */; };
+		1100E46FA55831DFFA177A9A /* SuggestionUsageLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F46D69877CE4417EC423D0 /* SuggestionUsageLog.swift */; };
 		1104ABD01283774EDF249EF0 /* LLMIOFileHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56A2F75C66BECA61A722D3FB /* LLMIOFileHandler.swift */; };
 		111905666B5F1D0B65B87D44 /* CapturedInputEventTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 353191D1D8A1C655E1B5F562 /* CapturedInputEventTests.swift */; };
 		113D4A18C8782C578463A6C4 /* GhostTextLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5C0792BF971B702DE0A095E /* GhostTextLayout.swift */; };
@@ -476,6 +477,7 @@
 		543B45F8FF4A6AFCB9286521 /* Sparkle-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 70C489EC7EA50C2B103A6B09 /* Sparkle-LICENSE.txt */; };
 		54563F3438F5329918DF9A1B /* FocusModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B778713FE1C9481CE0DF065 /* FocusModels.swift */; };
 		5461DD0133FE632B2EB4936A /* BrowserAppDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 589029534F91D2BE26A65263 /* BrowserAppDetectorTests.swift */; };
+		54884AFD428109310F8BA744 /* SuggestionUsageLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F46D69877CE4417EC423D0 /* SuggestionUsageLog.swift */; };
 		54F87EB87E46B987E3679514 /* FoundationModelSuggestionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17794AE5A5D5A93A7919E6BA /* FoundationModelSuggestionEngine.swift */; };
 		55160DA471782307483E359F /* SuggestionSessionReconciler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CADFBB03C10309B9048C8E9 /* SuggestionSessionReconciler.swift */; };
 		55243B4055E8067FE3483164 /* FieldStyleCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 544C25CEF5C997F920C7BF0F /* FieldStyleCache.swift */; };
@@ -808,6 +810,7 @@
 		94FA4632A562E454472BE1C6 /* HostBaselineCalibrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDC1ECBE9D1EDE855B57A913 /* HostBaselineCalibrator.swift */; };
 		952729C6514FBC40D6E7D1D4 /* CotabbyInference in Frameworks */ = {isa = PBXBuildFile; productRef = D11AB0F962CCC5BD79B630CA /* CotabbyInference */; };
 		952D9B4BDBE1C3E68E6AC5EC /* SuggestionOverlayPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D598CC3134879999D567455 /* SuggestionOverlayPresenter.swift */; };
+		959359842794EA145F0DD0DB /* SuggestionUsageLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F46D69877CE4417EC423D0 /* SuggestionUsageLog.swift */; };
 		95B1C40207F57D7E059B9965 /* de.txt in Resources */ = {isa = PBXBuildFile; fileRef = C648EBB10D7F8E0B904DEC91 /* de.txt */; };
 		96117B3DC1292771EE6B8316 /* PerAppShortcutOverride.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67A9F3C0F7B53B7F0D3BA82A /* PerAppShortcutOverride.swift */; };
 		9698DED033367C1E6F48D43E /* ModelFileValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36652DB88C5948AA4A31524A /* ModelFileValidator.swift */; };
@@ -950,6 +953,7 @@
 		AF0A46BF9A617166250DB593 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 07BDD6DA81FC5B63330468CC /* Sparkle */; };
 		AF55F1ABEDEA10C76C307CEC /* CotabbyAppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 711293EA57808B9428C7B908 /* CotabbyAppEnvironment.swift */; };
 		AF5AF5B7D32EDC0AF1A31557 /* InsertedTextAdvance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C8C1A4EC935BB837432BAF2 /* InsertedTextAdvance.swift */; };
+		AFF96B1E1AA0859F40E2BCBA /* SuggestionUsageLogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11711C3770687B342123CC50 /* SuggestionUsageLogTests.swift */; };
 		AFFF05025897116EA6E58EA7 /* Aria2OutputParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83457CCF1A50CE83428C363D /* Aria2OutputParser.swift */; };
 		B00FDD3DEE0B73FF5136C91C /* FocusTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C9FDF029F7828CAF3FE8850 /* FocusTracker.swift */; };
 		B037B4D0AD41AFCE6BBDA586 /* MenuBarPresentationObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DE86A49339BB507D197629D /* MenuBarPresentationObserver.swift */; };
@@ -1403,6 +1407,7 @@
 		0F328B43743D803A16045110 /* HostFontRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostFontRegistry.swift; sourceTree = "<group>"; };
 		10107090891BE11E2B34BC9E /* TypefaceMatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypefaceMatcherTests.swift; sourceTree = "<group>"; };
 		110F737140F015E1A18E5A58 /* FocusSnapshotResolverLiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusSnapshotResolverLiveTests.swift; sourceTree = "<group>"; };
+		11711C3770687B342123CC50 /* SuggestionUsageLogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionUsageLogTests.swift; sourceTree = "<group>"; };
 		11CF768650A90705FC0D2730 /* SuggestionTextColorCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionTextColorCodec.swift; sourceTree = "<group>"; };
 		12082948AEBC0DFE5ADC6961 /* SuggestionAvailabilityEvaluator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionAvailabilityEvaluator.swift; sourceTree = "<group>"; };
 		122298AE151ECEEC175878BF /* ConfidenceSuppressionPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfidenceSuppressionPolicy.swift; sourceTree = "<group>"; };
@@ -1899,6 +1904,7 @@
 		D182046E27CB170D943E8F86 /* PromptContextSanitizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptContextSanitizer.swift; sourceTree = "<group>"; };
 		D1891267512941C84BEA4172 /* FocusedInputPollingSignature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusedInputPollingSignature.swift; sourceTree = "<group>"; };
 		D1AB5EBB44EE64EB3EB1426F /* BundledRuntimeLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BundledRuntimeLocator.swift; sourceTree = "<group>"; };
+		D1F46D69877CE4417EC423D0 /* SuggestionUsageLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionUsageLog.swift; sourceTree = "<group>"; };
 		D253D06D941F60EDAF112625 /* SuggestionSettingsModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionSettingsModelTests.swift; sourceTree = "<group>"; };
 		D381F1752705DC80E491B025 /* ArithmeticEvaluatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArithmeticEvaluatorTests.swift; sourceTree = "<group>"; };
 		D3C1C9A9BF1F74C16E4401EC /* CotabbyBrand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CotabbyBrand.swift; sourceTree = "<group>"; };
@@ -2368,6 +2374,7 @@
 				3DB1A3F7D6C0FF28717E6D4C /* SuggestionEngineModels.swift */,
 				50119F67E7BB9FBC8EA94BF2 /* SuggestionQualityMetricsStore.swift */,
 				5652FFF8E718A17D98F87CD0 /* SuggestionSubsystemContracts.swift */,
+				D1F46D69877CE4417EC423D0 /* SuggestionUsageLog.swift */,
 			);
 			path = Suggestion;
 			sourceTree = "<group>";
@@ -2702,6 +2709,7 @@
 				4BA1D28712B262ABD96F8399 /* ModelAndPresentationValueTests.swift */,
 				B494C76056D9B01D6A3ECABD /* SuggestionEngineModelsTests.swift */,
 				CC5CD24D2FF35FD36B8D78DE /* SuggestionQualityMetricsStoreTests.swift */,
+				11711C3770687B342123CC50 /* SuggestionUsageLogTests.swift */,
 			);
 			path = Suggestion;
 			sourceTree = "<group>";
@@ -4603,6 +4611,7 @@
 				765DC50D626201BA42EEDC32 /* SuggestionSubsystemContracts.swift in Sources */,
 				D649B6CF0F1F9C950C8AB95A /* SuggestionTextColorCodec.swift in Sources */,
 				A07CBE5E05FDB9951D03C7E6 /* SuggestionTextNormalizer.swift in Sources */,
+				54884AFD428109310F8BA744 /* SuggestionUsageLog.swift in Sources */,
 				EF48BD37DC23DC3A2A974D6F /* SuggestionWorkController.swift in Sources */,
 				6533BF4CB934FCA44D0781C0 /* SurfaceContextComposer.swift in Sources */,
 				87A8F8F99B4034FC36F1AD08 /* SymSpell.swift in Sources */,
@@ -4936,6 +4945,7 @@
 				3DC75D1C5EF3AB83E3BC5750 /* SuggestionSubsystemContracts.swift in Sources */,
 				197203BC207E394601E97890 /* SuggestionTextColorCodec.swift in Sources */,
 				6BED0111C262E06BFF751BF4 /* SuggestionTextNormalizer.swift in Sources */,
+				959359842794EA145F0DD0DB /* SuggestionUsageLog.swift in Sources */,
 				A43DC0A76DFCD221A7DA6A3F /* SuggestionWorkController.swift in Sources */,
 				C8B5E45A6F45B307C067CF61 /* SurfaceContextComposer.swift in Sources */,
 				C526BC1F5D44376F25E48D8F /* SymSpell.swift in Sources */,
@@ -5269,6 +5279,7 @@
 				6CCFAA1D86C4E4DC7E3DB8A3 /* SuggestionSubsystemContracts.swift in Sources */,
 				27A7976690FC7FDA7EE364D8 /* SuggestionTextColorCodec.swift in Sources */,
 				019EFBC6CD5189676D8B035F /* SuggestionTextNormalizer.swift in Sources */,
+				1100E46FA55831DFFA177A9A /* SuggestionUsageLog.swift in Sources */,
 				DCA6BB5C622ADE0DA1B9769F /* SuggestionWorkController.swift in Sources */,
 				ED5E57512F532DDA48DF3360 /* SurfaceContextComposer.swift in Sources */,
 				11C548C2B50D9B27BD1B7293 /* SymSpell.swift in Sources */,
@@ -5550,6 +5561,7 @@
 				E2A0998154C6BFFC69B54038 /* SuggestionStreamingStateTests.swift in Sources */,
 				AEF6FC272F0B1B20B43FD0EE /* SuggestionTextColorCodecTests.swift in Sources */,
 				64A3D79B01983CAD4EFDD1BC /* SuggestionTextNormalizerTests.swift in Sources */,
+				AFF96B1E1AA0859F40E2BCBA /* SuggestionUsageLogTests.swift in Sources */,
 				EB9DC100AADED49A684632FC /* SuggestionWordAcceptanceTests.swift in Sources */,
 				CF04C28598AF9A437990C8A4 /* SurfaceContextComposerTests.swift in Sources */,
 				15D7C2CFE930F62B88F07EA7 /* SymSpellCorrectorTests.swift in Sources */,

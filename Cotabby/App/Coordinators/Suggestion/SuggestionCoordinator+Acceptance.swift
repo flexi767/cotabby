@@ -169,6 +169,7 @@ extension SuggestionCoordinator {
         deferAcceptanceBookkeeping { [weak self] in
             self?.recordAcceptedWords(from: acceptedChunk)
             self?.recordSuggestionAcceptedIfFirstChunk(of: sessionForAcceptance)
+            self?.suggestionUsageLog.recordAccepted(characters: acceptedChunk.count)
         }
 
         // The insert just made every geometry cache built from pre-insert reads stale: child-run

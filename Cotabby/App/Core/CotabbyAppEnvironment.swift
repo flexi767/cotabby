@@ -37,6 +37,7 @@ final class CotabbyAppEnvironment {
     let inlineCommandCoordinator: InlineCommandCoordinator
     let emojiUsageStore: EmojiUsageStore
     let phraseMemoryStore: PhraseMemoryStore
+    let suggestionUsageLog: SuggestionUsageLog
     let welcomeCoordinator: WelcomeCoordinator
     let huggingFaceSearchService: HuggingFaceSearchService
     let performanceMetricsStore: PerformanceMetricsStore
@@ -236,6 +237,10 @@ final class CotabbyAppEnvironment {
         // coordinator is the only writer (it sees the focused field's text over time, which is what
         // commit detection needs) and the Context settings pane reads the counts and offers "forget".
         let phraseMemoryStore = PhraseMemoryStore()
+        // The opt-in record of what happened to each suggestion, for building an eval set from real
+        // writing. Same two consumers and the same reason as phrase memory: the coordinator writes
+        // (only it sees suggestions and the typing that follows), the Context pane toggles and deletes.
+        let suggestionUsageLog = SuggestionUsageLog()
 
         let settingsCoordinator = SettingsCoordinator(
             appUpdateManager: appUpdateManager,
@@ -254,7 +259,8 @@ final class CotabbyAppEnvironment {
                 welcomeCoordinator?.showWelcome()
             },
             clearEmojiHistory: { emojiUsageStore.clear() },
-            phraseMemoryStore: phraseMemoryStore
+            phraseMemoryStore: phraseMemoryStore,
+            suggestionUsageLog: suggestionUsageLog
         )
 
         let interactionState = SuggestionInteractionState()
@@ -290,7 +296,8 @@ final class CotabbyAppEnvironment {
             symSpellCorrector: symSpellCorrector,
             spellingLanguageResolver: SpellingLanguageResolver(),
             qualityMetricsStore: qualityMetricsStore,
-            phraseMemoryStore: phraseMemoryStore
+            phraseMemoryStore: phraseMemoryStore,
+            suggestionUsageLog: suggestionUsageLog
         )
 
         // The emoji picker is a sibling to the suggestion coordinator. It reuses the input monitor,
@@ -360,6 +367,7 @@ final class CotabbyAppEnvironment {
         self.inlineCommandCoordinator = inlineCommandCoordinator
         self.emojiUsageStore = emojiUsageStore
         self.phraseMemoryStore = phraseMemoryStore
+        self.suggestionUsageLog = suggestionUsageLog
         self.welcomeCoordinator = welcomeCoordinator
         self.huggingFaceSearchService = huggingFaceSearchService
         self.performanceMetricsStore = performanceMetricsStore

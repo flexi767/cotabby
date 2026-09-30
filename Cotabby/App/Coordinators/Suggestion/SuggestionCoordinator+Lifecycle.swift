@@ -23,6 +23,10 @@ extension SuggestionCoordinator {
         // Learn from whatever the writer left in the focused field before the observation stream
         // goes away; after teardown no further snapshot can close it out.
         recordPhraseMemoryCommit(typedTextCommitDetector.flush())
+        // Same reasoning for the usage log's tracked suggestion: write it before teardown, and
+        // wait for the write so app termination cannot cut the file mid-line.
+        suggestionUsageLog.finishPending()
+        suggestionUsageLog.waitForPendingWrites()
         hideOverlay(reason: "Overlay hidden because Cotabby stopped observing suggestions.")
         inputMonitor.onEvent = nil
         inputMonitor.onSuppressedSyntheticInput = nil

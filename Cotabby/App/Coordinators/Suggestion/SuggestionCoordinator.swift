@@ -58,6 +58,8 @@ final class SuggestionCoordinator: ObservableObject {
     /// detection needs. Read on every request build so a phrase learned a minute ago is already in
     /// play.
     let phraseMemoryStore: PhraseMemoryStore
+    /// Opt-in outcome log (see `SuggestionUsageLog`); inert until the user switches it on.
+    let suggestionUsageLog: SuggestionUsageLog
     /// Frequency-ranked correction source (SymSpell). Used first for the correction word, with
     /// `spellChecker` as the fallback while its index is still loading or when it has no suggestion.
     let symSpellCorrector: SymSpellCorrector
@@ -216,6 +218,7 @@ final class SuggestionCoordinator: ObservableObject {
         // Not defaulted: a default argument is evaluated in the caller's nonisolated context, and
         // this store is main-actor isolated like the coordinator itself.
         phraseMemoryStore: PhraseMemoryStore,
+        suggestionUsageLog: SuggestionUsageLog,
         userDefaults: UserDefaults = .standard
     ) {
         let storedTotalTabAcceptedWordCount = userDefaults.integer(
@@ -240,6 +243,7 @@ final class SuggestionCoordinator: ObservableObject {
         self.spellingLanguageResolver = spellingLanguageResolver
         self.qualityMetricsStore = qualityMetricsStore
         self.phraseMemoryStore = phraseMemoryStore
+        self.suggestionUsageLog = suggestionUsageLog
         self.userDefaults = userDefaults
         settingsSnapshot = suggestionSettings.snapshot
         // These collaborators isolate "how overlay/logging works" from "when the coordinator

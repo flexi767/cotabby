@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// File overview:
@@ -28,6 +29,8 @@ struct ContextPaneView: View {
     /// Counts and the forget control for the learned-phrase memory. Observed rather than passed as
     /// closures so the labels update the moment a phrase is learned or the memory is cleared.
     @ObservedObject var phraseMemoryStore: PhraseMemoryStore
+    /// The opt-in outcome log. Observed here so the toggle and record count stay live.
+    @ObservedObject var suggestionUsageLog: SuggestionUsageLog
 
     private static let previewEditorMinHeight: CGFloat = 132
     private static let extendedContextEditorMinHeight: CGFloat = 220
@@ -36,6 +39,7 @@ struct ContextPaneView: View {
         SettingsPaneScaffold {
             livePreviewSection
             learnedPhrasesSection
+            usageLogSection
             extendedContextSection
             howThisIsUsedSection
         }
@@ -118,6 +122,51 @@ struct ContextPaneView: View {
             }
             .padding(.vertical, 6)
             .settingsItem(.learnedPhrases)
+        }
+    }
+
+    /// Opt-in outcome log controls. A section of its own, beside learned phrases, because both are
+    /// records of the writer's own typing and both need an obvious off switch and delete button.
+    private var usageLogSection: some View {
+        Section("Suggestion usage log") {
+            VStack(alignment: .leading, spacing: 12) {
+                Toggle(isOn: usageLogBinding) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Keep a private record of suggestions")
+                        Text("Off unless you turn it on. While it is on, Cotabby writes down each " +
+                            "suggestion, whether you took it, and the next words you typed, so " +
+                            "suggestion quality can be measured on your real writing. It stays in a " +
+                            "file on this Mac and is never sent anywhere. Password fields, terminals, " +
+                            "and code editors are never recorded.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                HStack {
+                    Text(usageLogCountLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+
+                    Spacer(minLength: 0)
+
+                    Button("Show in Finder") {
+                        if let url = suggestionUsageLog.fileURL {
+                            NSWorkspace.shared.activateFileViewerSelecting([url])
+                        }
+                    }
+                    .disabled(suggestionUsageLog.recordCount == 0)
+
+                    Button("Delete Log", role: .destructive) {
+                        suggestionUsageLog.deleteAll()
+                    }
+                    .disabled(suggestionUsageLog.recordCount == 0)
+                }
+            }
+            .padding(.vertical, 6)
+            .settingsItem(.suggestionUsageLog)
         }
     }
 
@@ -226,6 +275,22 @@ struct ContextPaneView: View {
     }
 
     // MARK: - Bindings & helpers
+
+    private var usageLogBinding: Binding<Bool> {
+        Binding(
+            get: { suggestionUsageLog.isEnabled },
+            set: { suggestionUsageLog.setEnabled($0) }
+        )
+    }
+
+    private var usageLogCountLabel: String {
+        let count = suggestionUsageLog.recordCount
+        guard count > 0 else {
+            return suggestionUsageLog.isEnabled ? "Nothing recorded yet." : "Nothing recorded."
+        }
+        let summary = "\(count) suggestion\(count == 1 ? "" : "s") recorded."
+        return suggestionUsageLog.isEnabled ? summary : summary + " Paused."
+    }
 
     private var phraseMemoryBinding: Binding<Bool> {
         Binding(

@@ -103,6 +103,79 @@ final class SuggestionCoordinatorPredictionTests: SuggestionCoordinatorRigTestCa
         XCTAssertEqual(rig.coordinator.qualityMetricsStore.counters.suppressedByReason, ["emptyUnattributed": 1])
     }
 
+    // MARK: - One-shot retry of an unusable completion
+
+    func test_emptyGenerationRetriesOnceWithItsOpeningTokenBanned() async {
+        let rig = retained(makeCoordinatorRig(
+            snapshot: CotabbyTestFixtures.focusedInputSnapshot(precedingText: "Hello ")
+        ))
+        rig.engine.resultProvider = { request in
+            guard let banned = request.retryBannedSeedToken else {
+                // The model's opening token was an immediate end of generation.
+                return SuggestionResult(generation: request.generation, rawText: "", text: "", latency: 0.01,
+                                        suppressionReason: "emptyGeneration", firstToken: 1)
+            }
+            XCTAssertEqual(banned, 1)
+            return SuggestionResult(generation: request.generation, rawText: "world", text: "world", latency: 0.01,
+                                    firstToken: 2, isRetry: true)
+        }
+
+        rig.coordinator.schedulePrediction()
+        await waitUntil("The retry never reached the screen") {
+            rig.coordinator.state == .ready(text: "world", latency: 0.01)
+        }
+
+        XCTAssertEqual(rig.engine.requests.map(\.retryBannedSeedToken), [nil, 1])
+        XCTAssertEqual(rig.engine.requests.map(\.requestID).count, 2)
+        XCTAssertEqual(rig.engine.requests.first?.prompt, rig.engine.requests.last?.prompt, "same prompt, so the KV is reused")
+    }
+
+    func test_aRetryThatIsAlsoUnusableDoesNotRetryAgain() async {
+        let rig = retained(makeCoordinatorRig(
+            snapshot: CotabbyTestFixtures.focusedInputSnapshot(precedingText: "Hello ")
+        ))
+        rig.engine.resultProvider = { request in
+            SuggestionResult(generation: request.generation, rawText: "", text: "", latency: 0.01,
+                             suppressionReason: "emptyGeneration", firstToken: 1,
+                             isRetry: request.retryBannedSeedToken != nil)
+        }
+
+        rig.coordinator.schedulePrediction()
+        await waitUntil("Pipeline never made the retry") { rig.engine.requests.count == 2 }
+        await waitUntil("Pipeline never settled to idle") { rig.coordinator.state == .idle }
+        // Give a runaway loop a chance to show itself before asserting it did not happen.
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(rig.engine.requests.count, 2)
+        XCTAssertNil(rig.interactionState.activeSession)
+    }
+
+    func test_usageLogRecordsAShownSuggestionOnlyWhenSwitchedOn() async {
+        let rig = retained(makeCoordinatorRig(
+            snapshot: CotabbyTestFixtures.focusedInputSnapshot(precedingText: "Hello ")
+        ))
+        let log = rig.coordinator.suggestionUsageLog
+        XCTAssertFalse(log.isEnabled)
+        log.setEnabled(true)
+        defer { log.deleteAll() }
+
+        rig.coordinator.schedulePrediction()
+        await waitUntil("Suggestion never became ready") {
+            rig.coordinator.state == .ready(text: "world", latency: 0.01)
+        }
+        log.finishPending()
+        log.waitForPendingWrites()
+
+        XCTAssertEqual(log.recordCount, 1)
+        let data = (log.fileURL.flatMap { try? Data(contentsOf: $0) }) ?? Data()
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let record = try? decoder.decode(SuggestionUsageRecord.self, from: data.dropLast())
+        XCTAssertEqual(record?.shownText, "world")
+        XCTAssertEqual(record?.precedingText, "Hello ")
+        XCTAssertEqual(record?.outcome, .abandoned)
+    }
+
     func test_apply_emptyResultAlreadyAttributedByTheEngineIsNotCountedTwice() async {
         let rig = retained(makeCoordinatorRig())
         rig.engine.resultProvider = { request in

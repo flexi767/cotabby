@@ -31,6 +31,7 @@ struct SettingsContainerView: View {
     /// Declared after the closures, not with the other stores, so this view's memberwise init keeps
     /// the argument order its call site in `SettingsCoordinator` uses.
     @ObservedObject var phraseMemoryStore: PhraseMemoryStore
+    @ObservedObject var suggestionUsageLog: SuggestionUsageLog
     let onQuit: () -> Void
 
     @AppStorage("cotabbySettingsSelectedCategoryV2")
@@ -148,7 +149,8 @@ struct SettingsContainerView: View {
         case .context:
             ContextPaneView(
                 suggestionSettings: suggestionSettings,
-                phraseMemoryStore: phraseMemoryStore
+                phraseMemoryStore: phraseMemoryStore,
+                suggestionUsageLog: suggestionUsageLog
             )
         case .shortcuts:
             ShortcutsPaneView(suggestionSettings: suggestionSettings)

@@ -800,6 +800,19 @@ extension SuggestionCoordinator {
         )
     }
 
+    /// Hands one presentation outcome to the opt-in usage log, anchored at the live caret the
+    /// outcome applies to. A no-op while the log is off.
+    private func recordUsage(of result: SuggestionResult, shownText: String?, reason: String?, context: FocusedInputContext) {
+        suggestionUsageLog.recordGeneration(
+            context: context,
+            shownText: shownText,
+            suppressionReason: reason,
+            rawText: result.rawText,
+            isRetry: result.isRetry,
+            latency: result.latency
+        )
+    }
+
     /// Re-runs the same request once with the failed opening token banned, when
     /// `UnusableCompletionRetryPolicy` allows it. The retry reuses this work ID, so any keystroke,
     /// focus change, or dismissal that retires the work also drops the retry.
@@ -1019,6 +1032,8 @@ extension SuggestionCoordinator {
                     hideOverlay(reason: "Overlay hidden because the completion failed the seam guard.")
                     state = .idle
                     qualityMetricsStore.recordSuppressed(reason: Self.seamSuppressionReason(for: verdict))
+                    recordUsage(of: result, shownText: nil, reason: Self.seamSuppressionReason(for: verdict),
+                                context: liveContext)
                     logStage("seam-suppressed", workID: workID, generation: result.generation,
                              message: "Suppressed completion at the caret seam: \(verdict).",
                              rawOutput: result.rawText, normalizedOutput: result.text)
@@ -1029,6 +1044,8 @@ extension SuggestionCoordinator {
                     }
                 } else {
                     discardEmptyResult(result, workID: workID)
+                    recordUsage(of: result, shownText: nil, reason: result.suppressionReason ?? "emptyUnattributed",
+                                context: liveContext)
                     retryFailure = UnusableCompletionRetryPolicy.failure(forSuppressionReason: result.suppressionReason)
                 }
                 retryWithBannedOpening(after: result, failure: retryFailure, workID: workID, liveContext: liveContext)
@@ -1047,6 +1064,7 @@ extension SuggestionCoordinator {
         // One shown event per suggestion: this is the only place a fresh generation becomes
         // visible (re-presentations after partial accepts reuse the same session).
         qualityMetricsStore.recordShown(recoveringSuppression: result.suppressionReason)
+        recordUsage(of: result, shownText: visibleText, reason: nil, context: liveContext)
         let session = startCompletionSession(prediction: prediction, visibleText: visibleText,
             context: liveContext, latency: result.latency, isFinal: true, wordEndingOnly: wordEndingOnly)
         suggestionAnchorCache.record(
