@@ -150,6 +150,12 @@ def main():
                 print(f"  [{lower:>5}, {upper:>5}): {right_count}/{len(bucket)} ({100 * right_count / len(bucket):.0f}%)")
             upper = lower
 
+    fast = [r for r in records if r.get("source") == "phrase"]
+    if fast:
+        fast_right = [r for r in fast if r["outcome"] in ("accepted", "acceptedPartially", "typedThrough")]
+        fast_reacted = [r for r in fast if r["outcome"] != "abandoned"]
+        print(f"phrase fast path: {len(fast)} shown, {len(fast_right)}/{len(fast_reacted)} right when reacted to")
+
     retried = [r for r in records if r.get("isRetry")]
     if retried:
         retried_shown = [r for r in retried if r.get("shownText") is not None]

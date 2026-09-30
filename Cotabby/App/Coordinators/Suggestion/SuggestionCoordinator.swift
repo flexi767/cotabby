@@ -175,6 +175,8 @@ final class SuggestionCoordinator: ObservableObject {
     /// re-entry (see `SuggestionAnchorCache`). `cotabbyAnchorReuseDisabled` is the kill switch.
     var suggestionAnchorCache = SuggestionAnchorCache()
     static let anchorReuseDisabledDefaultsKey = "cotabbyAnchorReuseDisabled"
+    /// Hidden kill switch for `PhraseFastPath`; the fast path is on whenever phrase memory is.
+    static let phraseFastPathDisabledDefaultsKey = "cotabbyPhraseFastPathDisabled"
     static let speculativePrefetchDisabledDefaultsKey = "cotabbySpeculativePrefetchDisabled"
     /// Hidden kill switch for `UnusableCompletionRetryPolicy`; the retry is on unless this is set.
     static let unusableCompletionRetryDisabledDefaultsKey = "cotabbyUnusableCompletionRetryDisabled"

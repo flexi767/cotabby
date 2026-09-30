@@ -25,6 +25,8 @@ extension SuggestionCoordinator {
             disablePredictions(reason: disabledReason)
             return
         }
+        // A learned phrase the writer has started typing needs neither a pause nor the model.
+        if presentPhraseFastPathIfPossible() { return }
 
         // The debounce window adapts to the last generation latency: snappier when the model is
         // fast, calmer when it is slow (fewer doomed generations to cancel). The configured value
@@ -180,6 +182,70 @@ extension SuggestionCoordinator {
             }
             return false
         }
+        return true
+    }
+
+    /// Shows the rest of a learned phrase the writer has started typing, before any debounce or model
+    /// call (see `PhraseFastPath`). Runs on every schedule, so a miss must cost almost nothing and
+    /// leave no trace: it only reads, and every guard that fails just falls through to the normal
+    /// debounced generation, which applies its own gates (with their UI side effects) as before.
+    private func presentPhraseFastPathIfPossible() -> Bool {
+        guard settingsSnapshot.isPhraseMemoryEnabled,
+              !userDefaults.bool(forKey: Self.phraseFastPathDisabledDefaultsKey) else { return false }
+        // The host-publish poll usually captured the keystroke a moment ago, so this is normally
+        // free; a stale snapshot would match the phrase against text missing the last keystroke.
+        focusModel.refreshIfStale(maxAgeMilliseconds: Self.freshSnapshotReuseWindowMilliseconds)
+        let snapshot = focusModel.snapshot
+        guard currentDisabledReason(focusSnapshot: snapshot) == nil,
+              let rawContext = snapshot.context,
+              !rawContext.isSecure, rawContext.selection.length == 0, !rawContext.hasHostMarkedText,
+              SuggestionRequestFactory.shouldGenerateSuggestion(
+                  for: rawContext.precedingText,
+                  trailingText: rawContext.trailingText,
+                  suggestWithinWords: settingsSnapshot.suggestWithinWords
+              ) else { return false }
+        // Phrase memory never learns in terminals or code editors; it does not speak there either.
+        switch AppSurfaceClassifier.classify(bundleIdentifier: rawContext.bundleIdentifier,
+                                             isIntegratedTerminal: rawContext.isIntegratedTerminal) {
+        case .terminal, .codeEditor: return false
+        case .email, .chat, .browser, .other: break
+        }
+        guard let phraseRemainder = PhraseFastPath.continuation(
+            precedingText: rawContext.precedingText,
+            trailingText: rawContext.trailingText,
+            snapshot: phraseMemoryStore.snapshot()
+        ) else { return false }
+
+        let context = interactionState.materializeContext(from: rawContext)
+        let range = settingsSnapshot.effectiveWordRange
+        let text = SuggestionLengthPolicy.trimmed(phraseRemainder, minimum: range.lowWords, maximum: range.highWords)
+        // The same display guards a model result passes at this caret.
+        guard !TrailingDuplicationFilter.duplicatesTrailingText(text, trailingText: context.trailingText),
+              case let .show(visibleText, wordEndingOnly) = completionPresentation(text: text, context: context, isFinal: true),
+              !wasDismissed(visibleText, context: context) else { return false }
+
+        // Retire any in-flight generation for older text: its late, stale result would otherwise
+        // hide this ghost when `apply` drops it.
+        workController.cancelAll()
+        lastAcceptedTail = nil
+        latestGenerationNumber = context.generation
+        // Counted like any suggestion so acceptance rates stay comparable: one generation, shown.
+        qualityMetricsStore.recordGenerated()
+        qualityMetricsStore.recordShown()
+        suggestionUsageLog.recordGeneration(context: context, shownText: visibleText, suppressionReason: nil,
+                                            rawText: phraseRemainder, isRetry: false, latency: 0, source: "phrase")
+        let session = startCompletionSession(prediction: text, visibleText: visibleText,
+            context: context, latency: 0, isFinal: true, wordEndingOnly: wordEndingOnly)
+        state = .ready(text: session.remainingText, latency: session.latency)
+        presentOverlay(
+            text: session.remainingText,
+            at: context.caretRect,
+            context: context,
+            isRightToLeft: TextDirectionDetector.isRightToLeft(context.precedingText)
+        )
+        logStage("phrase-fast-path", workID: currentWorkID, generation: context.generation,
+                 message: "Showed a learned phrase without generating.")
+        prepareContinuation(after: session, rawContext: rawContext)
         return true
     }
 

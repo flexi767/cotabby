@@ -150,6 +150,50 @@ final class SuggestionCoordinatorPredictionTests: SuggestionCoordinatorRigTestCa
         XCTAssertNil(rig.interactionState.activeSession)
     }
 
+    // MARK: - Phrase fast path
+
+    func test_aLearnedPhraseIsShownAtOnceWithoutTheModel() async {
+        let rig = retained(makeCoordinatorRig(
+            snapshot: CotabbyTestFixtures.focusedInputSnapshot(precedingText: "Thanks! I will send the "),
+            settingsSnapshot: CotabbyTestFixtures.settingsSnapshot(isPhraseMemoryEnabled: true, debounceMilliseconds: 1)
+        ))
+        for _ in 0..<2 {
+            _ = rig.coordinator.phraseMemoryStore.record(
+                committedText: "I will send the revised deck tomorrow morning.",
+                bundleIdentifier: "com.example.TestApp"
+            )
+        }
+
+        rig.coordinator.schedulePrediction()
+
+        // Synchronous: no debounce, no engine round trip.
+        guard case let .ready(text, latency) = rig.coordinator.state else {
+            return XCTFail("Expected the phrase to be ready immediately, got \(rig.coordinator.state)")
+        }
+        XCTAssertTrue("revised deck tomorrow morning.".hasPrefix(text), text)
+        XCTAssertEqual(latency, 0)
+        XCTAssertTrue(rig.engine.requests.isEmpty)
+        XCTAssertEqual(rig.coordinator.qualityMetricsStore.counters.shown, 1)
+        XCTAssertEqual(rig.coordinator.qualityMetricsStore.counters.generated, 1)
+    }
+
+    func test_phraseFastPathStaysQuietWhenPhraseMemoryIsOff() async {
+        let rig = retained(makeCoordinatorRig(
+            snapshot: CotabbyTestFixtures.focusedInputSnapshot(precedingText: "Thanks! I will send the ")
+        ))
+        for _ in 0..<2 {
+            _ = rig.coordinator.phraseMemoryStore.record(
+                committedText: "I will send the revised deck tomorrow morning.",
+                bundleIdentifier: "com.example.TestApp"
+            )
+        }
+
+        rig.coordinator.schedulePrediction()
+
+        XCTAssertEqual(rig.coordinator.state, .debouncing, "off means the ordinary model path")
+        await waitUntil("Model path never ran") { !rig.engine.requests.isEmpty }
+    }
+
     func test_usageLogRecordsAShownSuggestionOnlyWhenSwitchedOn() async {
         let rig = retained(makeCoordinatorRig(
             snapshot: CotabbyTestFixtures.focusedInputSnapshot(precedingText: "Hello ")

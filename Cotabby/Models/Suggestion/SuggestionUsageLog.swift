@@ -45,6 +45,8 @@ struct SuggestionUsageRecord: Codable, Equatable, Sendable {
     var suppressionReason: String?
     var rawText: String
     var isRetry: Bool
+    /// Where the suggestion came from when it was not the model: "phrase" for `PhraseFastPath`.
+    var source: String?
     /// When this outcome came from a retry, the reason its first attempt was unusable.
     var retriedAfter: String?
     var latencyMilliseconds: Int
@@ -175,6 +177,7 @@ final class SuggestionUsageLog: ObservableObject {
         isRetry: Bool,
         latency: TimeInterval,
         averageLogprob: Double? = nil,
+        source: String? = nil,
         now: Date = Date()
     ) {
         guard isEnabled || tracksOutcomesWhileOff,
@@ -198,6 +201,7 @@ final class SuggestionUsageLog: ObservableObject {
             suppressionReason: shownText == nil ? suppressionReason : nil,
             rawText: String(rawText.prefix(SuggestionUsageRecord.rawLimit)),
             isRetry: isRetry,
+            source: source,
             retriedAfter: retriedAfter,
             latencyMilliseconds: Int((latency * 1000).rounded()),
             averageLogprob: averageLogprob,
