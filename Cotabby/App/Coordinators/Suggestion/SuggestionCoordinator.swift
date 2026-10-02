@@ -158,6 +158,10 @@ final class SuggestionCoordinator: ObservableObject {
     /// Per-app confidence bar raised after ignored suggestions (see `AdaptiveConfidenceFloor`).
     /// Fed from `suggestionUsageLog`'s finished outcomes, consulted when each request is built.
     var adaptiveConfidenceFloor = AdaptiveConfidenceFloor()
+    /// Digit runs inserted by accepting suggestions since the last commit. A number in the committed
+    /// text that contains one of these came (at least partly) from the model, so it must never
+    /// become a known number (see `KnownPhoneNumbers`).
+    var acceptedDigitRunsSinceCommit: [String] = []
     /// True once the continuation of the active suggestion has been prefetched, so the extra
     /// generation happens at most once per suggestion however many characters are typed through it.
     /// Cleared whenever the session is torn down or replaced.

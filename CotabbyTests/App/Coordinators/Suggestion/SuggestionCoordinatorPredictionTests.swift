@@ -197,6 +197,37 @@ final class SuggestionCoordinatorPredictionTests: SuggestionCoordinatorRigTestCa
         XCTAssertTrue(rig.engine.requests.isEmpty)
     }
 
+    func test_aKnownNumberIsFinishedAtOnce() async {
+        let rig = retained(makeCoordinatorRig(
+            snapshot: CotabbyTestFixtures.focusedInputSnapshot(precedingText: "Reach me on +359 88 7"),
+            settingsSnapshot: CotabbyTestFixtures.settingsSnapshot(isPhraseMemoryEnabled: true, debounceMilliseconds: 1)
+        ))
+        rig.coordinator.personalWordStore.record(committedText: "My mobile is +359 88 712 3456.")
+
+        rig.coordinator.schedulePrediction()
+
+        guard case let .ready(text, _) = rig.coordinator.state else {
+            return XCTFail("Expected the known number at once, got \(rig.coordinator.state)")
+        }
+        XCTAssertEqual(text, "12 3456", "whole, not trimmed to the word preset")
+        XCTAssertTrue(rig.engine.requests.isEmpty)
+    }
+
+    func test_aModelInventedNumberIsNeverShown() async {
+        let rig = retained(makeCoordinatorRig(
+            snapshot: CotabbyTestFixtures.focusedInputSnapshot(precedingText: "Call me at ")
+        ))
+        rig.engine.resultProvider = { request in
+            SuggestionResult(generation: request.generation, rawText: "0888 123 456", text: "0888 123 456", latency: 0.01)
+        }
+
+        rig.coordinator.schedulePrediction()
+        await waitUntil("Pipeline never settled to idle") { rig.coordinator.state == .idle && !rig.engine.requests.isEmpty }
+
+        XCTAssertNil(rig.interactionState.activeSession)
+        XCTAssertEqual(rig.coordinator.qualityMetricsStore.counters.suppressedByReason["inventedNumber"], 1)
+    }
+
     func test_phraseFastPathStaysQuietWhenPhraseMemoryIsOff() async {
         let rig = retained(makeCoordinatorRig(
             snapshot: CotabbyTestFixtures.focusedInputSnapshot(precedingText: "Thanks! I will send the ")

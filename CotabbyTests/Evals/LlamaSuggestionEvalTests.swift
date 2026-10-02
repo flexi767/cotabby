@@ -153,9 +153,23 @@ final class LlamaSuggestionEvalTests: XCTestCase {
         let spellChecker = CurrentWordSpellChecker()
 
         var results: [LlamaEvalCaseResult] = []
+        // Real text can hold what hand-written cases never do (a stray control sequence, a prompt the
+        // runtime refuses to decode). The app shows nothing in that case and keeps going; so does
+        // the suite, counting it as shown-nothing rather than aborting the whole measurement.
+        var engineErrors = 0
         for evalCase in cases {
-            results.append(try await Self.runCase(evalCase, engine: engine, spellChecker: spellChecker))
+            do {
+                results.append(try await Self.runCase(evalCase, engine: engine, spellChecker: spellChecker))
+            } catch {
+                engineErrors += 1
+                results.append(LlamaEvalCaseResult(
+                    evalCase: evalCase, shownText: nil, rawText: "",
+                    outcome: LlamaEvalScorer.outcome(shownText: nil, for: evalCase),
+                    suppressionStage: "engine-error", latencySeconds: 0
+                ))
+            }
         }
+        if engineErrors > 0 { print("usage suite: \(engineErrors) case(s) hit an engine error and count as shown-nothing") }
         let report = LlamaEvalReport(
             modelLabel: (manager.diagnostics.modelFilePath.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "unknown-model") + " [usage]",
             results: results
@@ -265,6 +279,10 @@ final class LlamaSuggestionEvalTests: XCTestCase {
             // length changes the token budget, the stop policy, and what a short suggestion can get
             // right or wrong, so the eval has to ask for the same length the app does.
             selectedWordCountPreset: .twoToFour,
+            // `defaults write com.jacobfu.tabby.testhost cotabbyEvalWordRange 1-2` measures another
+            // length without editing the harness; absent, the preset above applies.
+            isUsingCustomWordCountRange: Self.wordRangeOverride != nil,
+            customWordCountRange: Self.wordRangeOverride ?? SuggestionWordRange(lowWords: 5, highWords: 15),
             // Only a case that supplies clipboard text turns the section on, so the ordinary
             // continuation cases keep the exact prompt shape they have always been scored against.
             isClipboardContextEnabled: evalCase.clipboardContext != nil,
@@ -306,8 +324,13 @@ final class LlamaSuggestionEvalTests: XCTestCase {
             let result = try await engine.generateSuggestion(for: attemptRequest)
             latency += Date().timeIntervalSince(start)
 
-            var shownText: String? = result.text.isEmpty ? nil : result.text
-            var suppressionStage: String? = result.text.isEmpty ? "normalizer" : nil
+            // Mirrors the coordinator's number guard. The harness has no typed history, so every
+            // phone-shaped number the model writes is withheld, exactly as the app does with none.
+            let vettedText = PhoneNumberGuard.vetted(
+                completion: result.text, precedingText: evalCase.precedingText, known: KnownPhoneNumbers()
+            ) ?? ""
+            var shownText: String? = vettedText.isEmpty ? nil : vettedText
+            var suppressionStage: String? = result.text.isEmpty ? "normalizer" : (vettedText.isEmpty ? "number-guard" : nil)
             var failure = UnusableCompletionRetryPolicy.failure(forSuppressionReason: result.suppressionReason)
 
             // Mirrors the coordinator's display-time seam guard.
@@ -342,6 +365,14 @@ final class LlamaSuggestionEvalTests: XCTestCase {
                 averageLogprob: result.averageLogprob
             )
         }
+    }
+
+    /// "low-high" from the test host's defaults, e.g. "1-2"; nil when unset or malformed.
+    private static var wordRangeOverride: SuggestionWordRange? {
+        guard let raw = UserDefaults.standard.string(forKey: "cotabbyEvalWordRange") else { return nil }
+        let parts = raw.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 2, parts[0] >= 1, parts[1] >= parts[0] else { return nil }
+        return SuggestionWordRange(lowWords: parts[0], highWords: parts[1])
     }
 
     /// Puts a case's raw screen text through the same passes the live pipeline applies for a local

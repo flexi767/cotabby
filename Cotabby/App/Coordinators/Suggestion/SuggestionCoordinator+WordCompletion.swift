@@ -27,15 +27,28 @@ extension SuggestionCoordinator {
 
     func startCompletionSession(prediction: String, visibleText: String, context: FocusedInputContext,
                                 latency: TimeInterval, isFinal: Bool, wordEndingOnly: Bool = false) -> ActiveSuggestionSession {
-        let fullText = bufferedCompletionText(prediction, visibleText: visibleText, context: context, isFinal: isFinal)
+        // The buffered words behind the visible ones are revealed on accept, so they pass the number
+        // guard too; if it would cut inside the visible text, the visible text is the whole session.
+        let safePrediction = vettedForNumbers(prediction, context: context) ?? visibleText
+        let fullText = bufferedCompletionText(safePrediction.hasPrefix(visibleText) ? safePrediction : visibleText,
+                                              visibleText: visibleText, context: context, isFinal: isFinal)
         return interactionState.startSession(fullText: fullText,
             initialVisibleCharacterCount: wordEndingOnly || fullText != visibleText ? visibleText.count : nil,
             showFollowingWords: settingsSnapshot.showFollowingWords, liveContext: context, latency: latency)
     }
 
+    /// `text` with any phone number the writer never typed removed (`PhoneNumberGuard`), or nil when
+    /// nothing worth showing remains. Runs regardless of the learning switch: with learning off there
+    /// are no known numbers, so every phone-shaped number from the model is withheld.
+    func vettedForNumbers(_ text: String, context: FocusedInputContext) -> String? {
+        PhoneNumberGuard.vetted(completion: text, precedingText: context.precedingText,
+                                known: personalWordStore.knownNumbers)
+    }
+
     func completionPresentation(
-        text: String, context: FocusedInputContext, isFinal: Bool
+        text proposedText: String, context: FocusedInputContext, isFinal: Bool
     ) -> CompletionSeamGuard.PresentationDecision {
+        guard let text = vettedForNumbers(proposedText, context: context) else { return .suppress(.inventedNumber) }
         let references = completionReferenceWords(context: context)
         let knownReferences = Set(references.map { $0.lowercased() })
         return CompletionSeamGuard.presentation(

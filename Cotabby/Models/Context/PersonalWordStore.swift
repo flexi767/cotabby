@@ -18,6 +18,8 @@ final class PersonalWordStore: ObservableObject {
 
     let fileURL: URL?
     private(set) var model: PersonalWordModel
+    /// Phone numbers the writer typed (see `KnownPhoneNumbers`), in their own file beside the words.
+    private(set) var knownNumbers: KnownPhoneNumbers
     private let writeQueue = DispatchQueue(label: "com.jacobfu.tabby.personal-words")
 
     init(fileURL: URL? = PersonalWordStore.defaultFileURL()) {
@@ -25,8 +27,14 @@ final class PersonalWordStore: ObservableObject {
         let loaded = fileURL.flatMap { try? Data(contentsOf: $0) }
             .flatMap { try? Self.decoder.decode(PersonalWordModel.self, from: $0) }
         model = loaded ?? PersonalWordModel()
+        knownNumbers = Self.numbersURL(for: fileURL).flatMap { try? Data(contentsOf: $0) }
+            .flatMap { try? Self.decoder.decode(KnownPhoneNumbers.self, from: $0) } ?? KnownPhoneNumbers()
         wordCount = model.wordCount
         hasStoredModel = loaded != nil
+    }
+
+    private static func numbersURL(for fileURL: URL?) -> URL? {
+        fileURL?.deletingLastPathComponent().appendingPathComponent("known-numbers.json")
     }
 
     /// False until the model has been written once, so a first launch can seed it.
@@ -52,9 +60,14 @@ final class PersonalWordStore: ObservableObject {
     }
 
     /// Learns from a block of text the writer finished (sent, or left the field with).
-    func record(committedText: String, now: Date = Date()) {
+    /// `excludingAcceptedDigits` are digit runs that entered this text by accepting a suggestion:
+    /// a number containing one is model output, not the writer's, and is never remembered.
+    func record(committedText: String, excludingAcceptedDigits: [String] = [], now: Date = Date()) {
         model.learn(committedText, weight: 1, now: now)
+        let numbersBefore = knownNumbers
+        knownNumbers.learn(committedText: committedText, excludingAcceptedDigits: excludingAcceptedDigits, now: now)
         save()
+        if knownNumbers != numbersBefore { saveNumbers() }
     }
 
     /// Extra weight for words the writer accepted from a suggestion, in the context they were
@@ -70,10 +83,23 @@ final class PersonalWordStore: ObservableObject {
 
     func forgetAll() {
         model = PersonalWordModel()
+        knownNumbers = KnownPhoneNumbers()
         wordCount = 0
         hasStoredModel = false
-        guard let fileURL else { return }
-        writeQueue.sync { try? FileManager.default.removeItem(at: fileURL) }
+        let urls = [fileURL, Self.numbersURL(for: fileURL)].compactMap { $0 }
+        writeQueue.sync { for url in urls { try? FileManager.default.removeItem(at: url) } }
+    }
+
+    private func saveNumbers() {
+        guard let url = Self.numbersURL(for: fileURL), let data = try? Self.encoder.encode(knownNumbers) else { return }
+        writeQueue.async { Self.writePrivately(data, to: url) }
+    }
+
+    private nonisolated static func writePrivately(_ data: Data, to url: URL) {
+        let manager = FileManager.default
+        try? manager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: url, options: .atomic)
+        try? manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
     func waitForPendingWrites() {
@@ -84,12 +110,7 @@ final class PersonalWordStore: ObservableObject {
         wordCount = model.wordCount
         hasStoredModel = true
         guard let fileURL, let data = try? Self.encoder.encode(model) else { return }
-        writeQueue.async {
-            let manager = FileManager.default
-            try? manager.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? data.write(to: fileURL, options: .atomic)
-            try? manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
-        }
+        writeQueue.async { Self.writePrivately(data, to: fileURL) }
     }
 
     private static let encoder: JSONEncoder = {

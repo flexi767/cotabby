@@ -75,7 +75,12 @@ extension SuggestionCoordinator {
                     self.finishUnavailableContinuation()
                     return
                 }
-                self.preparedContinuation?.text = plan.continuation(from: result.text)
+                // Prefetched words are revealed later without passing presentation again.
+                guard let safeText = self.vettedForNumbers(result.text, context: context) else {
+                    self.finishUnavailableContinuation()
+                    return
+                }
+                self.preparedContinuation?.text = plan.continuation(from: safeText)
                 self.preparedContinuation?.latency = result.latency
                 self.preparedContinuation?.averageLogprob = result.averageLogprob
                 self.attachPreparedContinuationOrAwaitPublication()

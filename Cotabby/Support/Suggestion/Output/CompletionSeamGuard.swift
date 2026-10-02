@@ -48,6 +48,8 @@ nonisolated enum CompletionSeamGuard {
         case seamMisspelling(word: String)
         case leadingWordMisspelling(word: String)
         case abandonedWord(word: String)
+        /// Digits that would form a phone number the writer never typed (`PhoneNumberGuard`).
+        case inventedNumber
     }
 
     /// Streaming must not expose the first generated word until it is complete enough to assess.

@@ -214,7 +214,12 @@ extension SuggestionCoordinator {
         }
         let range = settingsSnapshot.effectiveWordRange
         let instant: (text: String, source: String)
-        if let phraseRemainder = PhraseFastPath.continuation(
+        if rawContext.trailingText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let number = personalWordStore.knownNumbers.completion(precedingText: rawContext.precedingText) {
+            // The rest of a number the writer has typed before: exact, so never trimmed to the word
+            // preset (half a phone number is worse than none).
+            instant = (number, "number")
+        } else if let phraseRemainder = PhraseFastPath.continuation(
             precedingText: rawContext.precedingText,
             trailingText: rawContext.trailingText,
             snapshot: phraseMemoryStore.snapshot()
@@ -229,7 +234,9 @@ extension SuggestionCoordinator {
         }
 
         let context = interactionState.materializeContext(from: rawContext)
-        let text = SuggestionLengthPolicy.trimmed(instant.text, minimum: range.lowWords, maximum: range.highWords)
+        let text = instant.source == "number"
+            ? instant.text
+            : SuggestionLengthPolicy.trimmed(instant.text, minimum: range.lowWords, maximum: range.highWords)
         // The same display guards a model result passes at this caret.
         guard !TrailingDuplicationFilter.duplicatesTrailingText(text, trailingText: context.trailingText),
               case let .show(visibleText, wordEndingOnly) = completionPresentation(text: text, context: context, isFinal: true),
@@ -939,6 +946,8 @@ extension SuggestionCoordinator {
             return "leadingWordMisspelling"
         case .junkPunctuationRun:
             return "seamJunkPunctuationRun"
+        case .inventedNumber:
+            return "inventedNumber"
         case .allow:
             return "unknownSeamGuardSuppression"
         }

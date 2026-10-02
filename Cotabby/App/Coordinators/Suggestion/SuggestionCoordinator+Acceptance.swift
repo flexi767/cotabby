@@ -171,6 +171,7 @@ extension SuggestionCoordinator {
             self?.recordSuggestionAcceptedIfFirstChunk(of: sessionForAcceptance)
             self?.suggestionUsageLog.recordAccepted(characters: acceptedChunk.count)
             self?.recordAcceptedWordsForPersonalModel(acceptedChunk, context: liveContext)
+            self?.noteAcceptedDigits(in: acceptedChunk)
         }
 
         // The insert just made every geometry cache built from pre-insert reads stale: child-run
@@ -689,6 +690,15 @@ extension SuggestionCoordinator {
     private func recordSuggestionAcceptedIfFirstChunk(of session: ActiveSuggestionSession) {
         guard session.consumedCharacterCount == 0 else { return }
         qualityMetricsStore.recordAcceptedSuggestion()
+    }
+
+    /// Remembers digits that reached the field through an accept, so the next commit cannot learn a
+    /// number built from them. Every run of 3+ digits, plus the chunk's digits joined (a number split
+    /// by spaces, "12 3456"), so a partly accepted number is caught as well as a whole one.
+    private func noteAcceptedDigits(in acceptedChunk: String) {
+        let runs = acceptedChunk.split(whereSeparator: { !$0.isNumber }).map(String.init).filter { $0.count >= 3 }
+        let joined = acceptedChunk.filter(\.isNumber)
+        acceptedDigitRunsSinceCommit += runs + (joined.count >= 3 ? [String(joined)] : [])
     }
 
     /// An accepted suggestion is a word the writer chose: credit it to their word habits, under the
