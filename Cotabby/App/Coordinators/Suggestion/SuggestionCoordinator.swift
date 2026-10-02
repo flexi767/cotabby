@@ -58,6 +58,8 @@ final class SuggestionCoordinator: ObservableObject {
     /// detection needs. Read on every request build so a phrase learned a minute ago is already in
     /// play.
     let phraseMemoryStore: PhraseMemoryStore
+    /// The writer's word habits (see `PersonalWordStore`); fed alongside phrase memory.
+    let personalWordStore: PersonalWordStore
     /// Opt-in outcome log (see `SuggestionUsageLog`); inert until the user switches it on.
     let suggestionUsageLog: SuggestionUsageLog
     /// Frequency-ranked correction source (SymSpell). Used first for the correction word, with
@@ -175,7 +177,8 @@ final class SuggestionCoordinator: ObservableObject {
     /// re-entry (see `SuggestionAnchorCache`). `cotabbyAnchorReuseDisabled` is the kill switch.
     var suggestionAnchorCache = SuggestionAnchorCache()
     static let anchorReuseDisabledDefaultsKey = "cotabbyAnchorReuseDisabled"
-    /// Hidden kill switch for `PhraseFastPath`; the fast path is on whenever phrase memory is.
+    /// Hidden kill switch for the instant suggestions (`PhraseFastPath`, `PersonalWordModel`); they
+    /// are on whenever phrase memory ("Learn from what I type") is.
     static let phraseFastPathDisabledDefaultsKey = "cotabbyPhraseFastPathDisabled"
     static let speculativePrefetchDisabledDefaultsKey = "cotabbySpeculativePrefetchDisabled"
     /// Hidden kill switch for `UnusableCompletionRetryPolicy`; the retry is on unless this is set.
@@ -223,6 +226,7 @@ final class SuggestionCoordinator: ObservableObject {
         // Not defaulted: a default argument is evaluated in the caller's nonisolated context, and
         // this store is main-actor isolated like the coordinator itself.
         phraseMemoryStore: PhraseMemoryStore,
+        personalWordStore: PersonalWordStore,
         suggestionUsageLog: SuggestionUsageLog,
         userDefaults: UserDefaults = .standard
     ) {
@@ -248,6 +252,7 @@ final class SuggestionCoordinator: ObservableObject {
         self.spellingLanguageResolver = spellingLanguageResolver
         self.qualityMetricsStore = qualityMetricsStore
         self.phraseMemoryStore = phraseMemoryStore
+        self.personalWordStore = personalWordStore
         self.suggestionUsageLog = suggestionUsageLog
         self.userDefaults = userDefaults
         settingsSnapshot = suggestionSettings.snapshot

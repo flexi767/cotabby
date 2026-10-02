@@ -287,6 +287,7 @@ extension SuggestionCoordinator {
     /// Hands one finished block of text to the phrase memory and logs what was learned.
     func recordPhraseMemoryCommit(_ commit: TypedTextCommitDetector.Commit?) {
         guard let commit else { return }
+        personalWordStore.record(committedText: commit.text)
         let learned = phraseMemoryStore.record(
             committedText: commit.text,
             bundleIdentifier: commit.bundleIdentifier

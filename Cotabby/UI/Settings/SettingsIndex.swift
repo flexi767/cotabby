@@ -367,7 +367,7 @@ enum SettingsItem: String, CaseIterable, Identifiable {
         case .automaticallyFixTypos: return "Replace a misspelled word right after you press Space."
         case .extendedContext: return "A glossary or notes sent with every suggestion."
         case .contextLivePreview: return "A real field that exercises the full pipeline."
-        case .learnedPhrases: return "Sentences you type often, reused in suggestions."
+        case .learnedPhrases: return "Sentences and word habits you type often, suggested as you type."
         case .suggestionUsageLog: return "A private record of suggestions and what you typed, for measuring quality."
         case .engine: return "Apple Intelligence, bundled Open Source, or a local endpoint."
         case .appleIntelligenceAvailability: return "Whether this Mac can run Apple Intelligence."
@@ -543,7 +543,8 @@ enum SettingsItem: String, CaseIterable, Identifiable {
         case .learnedPhrases:
             return ["learn", "learned", "phrases", "history", "memory", "repeat", "repeated",
                     "habits", "my words", "forget", "typing history", "personalization",
-                    "remember", "frequent", "snippets", "sign-off"]
+                    "remember", "frequent", "snippets", "sign-off", "words", "vocabulary",
+                    "next word", "predictive", "personal dictionary"]
         case .suggestionUsageLog:
             return ["usage", "log", "record", "evaluation", "eval", "quality", "accepted", "ignored",
                     "measure", "statistics", "delete", "privacy", "history"]

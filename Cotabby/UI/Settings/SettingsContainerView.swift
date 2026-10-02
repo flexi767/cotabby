@@ -31,6 +31,7 @@ struct SettingsContainerView: View {
     /// Declared after the closures, not with the other stores, so this view's memberwise init keeps
     /// the argument order its call site in `SettingsCoordinator` uses.
     @ObservedObject var phraseMemoryStore: PhraseMemoryStore
+    @ObservedObject var personalWordStore: PersonalWordStore
     @ObservedObject var suggestionUsageLog: SuggestionUsageLog
     let onQuit: () -> Void
 
@@ -150,6 +151,7 @@ struct SettingsContainerView: View {
             ContextPaneView(
                 suggestionSettings: suggestionSettings,
                 phraseMemoryStore: phraseMemoryStore,
+                personalWordStore: personalWordStore,
                 suggestionUsageLog: suggestionUsageLog
             )
         case .shortcuts:

@@ -31,8 +31,12 @@ final class PhraseFastPathTests: XCTestCase {
                        "revised deck tomorrow morning.")
         XCTAssertEqual(continuation("Hi Sarah,\nI will send the ", [phrase(deck)]),
                        "revised deck tomorrow morning.")
-        XCTAssertNil(continuation("Yes and I will send the ", [phrase(deck)]),
-                     "the phrase starts a sentence; mid-sentence is weaker evidence")
+        XCTAssertEqual(continuation("Yes, and I will send the ", [phrase(deck)]), "revised deck tomorrow morning.",
+                       "a phrase may start mid-sentence once 3 of its words are typed")
+        XCTAssertNil(continuation("Yes, and send the ", [phrase("send the revised deck tomorrow morning")]),
+                     "mid-sentence needs 3 words and 12 characters; 'send the' is too little")
+        XCTAssertEqual(continuation("Sure, see you at the off", [phrase("See you at the office tomorrow.")]),
+                       "ice tomorrow.", "mid-sentence and mid-word")
     }
 
     func testNeedsEnoughTypedAndARepeatedPhrase() {

@@ -29,6 +29,8 @@ struct ContextPaneView: View {
     /// Counts and the forget control for the learned-phrase memory. Observed rather than passed as
     /// closures so the labels update the moment a phrase is learned or the memory is cleared.
     @ObservedObject var phraseMemoryStore: PhraseMemoryStore
+    /// Word habits learned under the same switch; observed for the count and cleared with "forget".
+    @ObservedObject var personalWordStore: PersonalWordStore
     /// The opt-in outcome log. Observed here so the toggle and record count stay live.
     @ObservedObject var suggestionUsageLog: SuggestionUsageLog
 
@@ -95,11 +97,13 @@ struct ContextPaneView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Toggle(isOn: phraseMemoryBinding) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Learn phrases I type often")
+                        Text("Learn from what I type")
                         Text("Off unless you turn it on. While it is on, Cotabby remembers the " +
-                            "sentences of messages you finish; a phrase has to show up at least " +
-                            "twice before it is ever used in a suggestion. Switching it off stops " +
-                            "both the learning and the suggesting, and keeps what was already learned.")
+                            "sentences of messages you finish and which words you tend to write " +
+                            "next, and gives suggestions you accept extra weight. A phrase has to show " +
+                            "up at least twice, and a word habit several times, before it is suggested; " +
+                            "then it appears as you type, without waiting for the model. Switching it " +
+                            "off stops both the learning and the suggesting, and keeps what was learned.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -114,10 +118,11 @@ struct ContextPaneView: View {
 
                     Spacer(minLength: 0)
 
-                    Button("Forget Learned Phrases", role: .destructive) {
+                    Button("Forget What Was Learned", role: .destructive) {
                         phraseMemoryStore.forgetAll()
+                        personalWordStore.forgetAll()
                     }
-                    .disabled(phraseMemoryStore.phraseCount == 0)
+                    .disabled(phraseMemoryStore.phraseCount == 0 && personalWordStore.wordCount == 0)
                 }
             }
             .padding(.vertical, 6)
@@ -308,8 +313,10 @@ struct ContextPaneView: View {
         guard stored > 0 else {
             return isEnabled ? "Nothing learned yet." : "Nothing learned. Turn this on to start."
         }
+        let words = personalWordStore.wordCount
         let summary = "\(stored) phrase\(stored == 1 ? "" : "s") remembered, "
-            + "\(phraseMemoryStore.eligiblePhraseCount) seen often enough to be used."
+            + "\(phraseMemoryStore.eligiblePhraseCount) seen often enough to be used; "
+            + "\(words) word\(words == 1 ? "" : "s") in your vocabulary."
         return isEnabled ? summary : summary + " Paused."
     }
 

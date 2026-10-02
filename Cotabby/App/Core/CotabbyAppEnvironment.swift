@@ -37,6 +37,7 @@ final class CotabbyAppEnvironment {
     let inlineCommandCoordinator: InlineCommandCoordinator
     let emojiUsageStore: EmojiUsageStore
     let phraseMemoryStore: PhraseMemoryStore
+    let personalWordStore: PersonalWordStore
     let suggestionUsageLog: SuggestionUsageLog
     let welcomeCoordinator: WelcomeCoordinator
     let huggingFaceSearchService: HuggingFaceSearchService
@@ -237,6 +238,12 @@ final class CotabbyAppEnvironment {
         // coordinator is the only writer (it sees the focused field's text over time, which is what
         // commit detection needs) and the Context settings pane reads the counts and offers "forget".
         let phraseMemoryStore = PhraseMemoryStore()
+        // Word-level habits learned from the same finished text, under the same switch. Seeded once
+        // from the phrases already learned, so it is useful on its first day.
+        let personalWordStore = PersonalWordStore()
+        if suggestionSettings.isPhraseMemoryEnabled {
+            personalWordStore.seedIfEmpty(from: phraseMemoryStore.snapshot())
+        }
         // The opt-in record of what happened to each suggestion, for building an eval set from real
         // writing. Same two consumers and the same reason as phrase memory: the coordinator writes
         // (only it sees suggestions and the typing that follows), the Context pane toggles and deletes.
@@ -260,6 +267,7 @@ final class CotabbyAppEnvironment {
             },
             clearEmojiHistory: { emojiUsageStore.clear() },
             phraseMemoryStore: phraseMemoryStore,
+            personalWordStore: personalWordStore,
             suggestionUsageLog: suggestionUsageLog
         )
 
@@ -297,6 +305,7 @@ final class CotabbyAppEnvironment {
             spellingLanguageResolver: SpellingLanguageResolver(),
             qualityMetricsStore: qualityMetricsStore,
             phraseMemoryStore: phraseMemoryStore,
+            personalWordStore: personalWordStore,
             suggestionUsageLog: suggestionUsageLog
         )
 
@@ -367,6 +376,7 @@ final class CotabbyAppEnvironment {
         self.inlineCommandCoordinator = inlineCommandCoordinator
         self.emojiUsageStore = emojiUsageStore
         self.phraseMemoryStore = phraseMemoryStore
+        self.personalWordStore = personalWordStore
         self.suggestionUsageLog = suggestionUsageLog
         self.welcomeCoordinator = welcomeCoordinator
         self.huggingFaceSearchService = huggingFaceSearchService

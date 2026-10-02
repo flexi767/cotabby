@@ -170,6 +170,7 @@ extension SuggestionCoordinator {
             self?.recordAcceptedWords(from: acceptedChunk)
             self?.recordSuggestionAcceptedIfFirstChunk(of: sessionForAcceptance)
             self?.suggestionUsageLog.recordAccepted(characters: acceptedChunk.count)
+            self?.recordAcceptedWordsForPersonalModel(acceptedChunk, context: liveContext)
         }
 
         // The insert just made every geometry cache built from pre-insert reads stale: child-run
@@ -688,6 +689,18 @@ extension SuggestionCoordinator {
     private func recordSuggestionAcceptedIfFirstChunk(of session: ActiveSuggestionSession) {
         guard session.consumedCharacterCount == 0 else { return }
         qualityMetricsStore.recordAcceptedSuggestion()
+    }
+
+    /// An accepted suggestion is a word the writer chose: credit it to their word habits, under the
+    /// same consent and the same surface exclusions as learning from finished text.
+    private func recordAcceptedWordsForPersonalModel(_ acceptedChunk: String, context: FocusedInputContext) {
+        guard settingsSnapshot.isPhraseMemoryEnabled, !context.isSecure else { return }
+        switch AppSurfaceClassifier.classify(bundleIdentifier: context.bundleIdentifier,
+                                             isIntegratedTerminal: context.isIntegratedTerminal) {
+        case .terminal, .codeEditor: return
+        case .email, .chat, .browser, .other: break
+        }
+        personalWordStore.recordAccepted(precedingText: context.precedingText, acceptedText: acceptedChunk)
     }
 
     /// Updates the global productivity counter from text accepted via Tab.

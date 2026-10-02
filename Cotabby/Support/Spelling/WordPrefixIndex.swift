@@ -58,10 +58,13 @@ nonisolated enum WordCompletionFallback {
             .map(String.init))
     }
 
-    /// Unique document/glossary matches take precedence. Corpus candidates need a clear frequency
-    /// margin; frequency is a fallback ranking signal, never permission to change typed letters.
+    /// Unique document/glossary matches take precedence, then the word this writer habitually types
+    /// for this prefix (`PersonalWordModel.completion`), then the corpus. Corpus candidates need a
+    /// clear frequency margin; frequency is a fallback ranking signal, never permission to change
+    /// typed letters.
     static func suffix(
-        for prefix: String, references: Set<String>, dictionaryCandidates: [WordPrefixIndex.Candidate]
+        for prefix: String, references: Set<String>, personalWord: String? = nil,
+        dictionaryCandidates: [WordPrefixIndex.Candidate]
     ) -> String? {
         guard prefix.count >= 3, prefix.allSatisfy({ $0.isLetter }) else { return nil }
         let matches = references.filter {
@@ -73,6 +76,8 @@ nonisolated enum WordCompletionFallback {
             word = match
         } else if !matches.isEmpty {
             return nil
+        } else if let personalWord {
+            word = personalWord
         } else {
             guard let first = dictionaryCandidates.first,
                   dictionaryCandidates.count == 1

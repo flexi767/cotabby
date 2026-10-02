@@ -177,6 +177,26 @@ final class SuggestionCoordinatorPredictionTests: SuggestionCoordinatorRigTestCa
         XCTAssertEqual(rig.coordinator.qualityMetricsStore.counters.generated, 1)
     }
 
+    func test_aStrongWordHabitIsShownAtOnceWithoutTheModel() async {
+        let rig = retained(makeCoordinatorRig(
+            snapshot: CotabbyTestFixtures.focusedInputSnapshot(precedingText: "Great talk, see you "),
+            settingsSnapshot: CotabbyTestFixtures.settingsSnapshot(isPhraseMemoryEnabled: true, debounceMilliseconds: 1)
+        ))
+        // Three different sentences: no phrase repeats, but the habit "see you" -> "tomorrow" does.
+        for text in ["Ok, see you tomorrow then.", "Can't today, see you tomorrow.", "Fine, see you tomorrow at nine."] {
+            rig.coordinator.personalWordStore.record(committedText: text)
+        }
+
+        rig.coordinator.schedulePrediction()
+
+        guard case let .ready(text, latency) = rig.coordinator.state else {
+            return XCTFail("Expected the habit to be ready immediately, got \(rig.coordinator.state)")
+        }
+        XCTAssertEqual(text, "tomorrow")
+        XCTAssertEqual(latency, 0)
+        XCTAssertTrue(rig.engine.requests.isEmpty)
+    }
+
     func test_phraseFastPathStaysQuietWhenPhraseMemoryIsOff() async {
         let rig = retained(makeCoordinatorRig(
             snapshot: CotabbyTestFixtures.focusedInputSnapshot(precedingText: "Thanks! I will send the ")

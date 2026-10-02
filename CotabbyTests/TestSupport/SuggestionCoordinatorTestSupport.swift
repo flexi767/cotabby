@@ -341,6 +341,10 @@ func makeCoordinatorRig(
         phraseMemoryStore: PhraseMemoryStore(
             defaults: UserDefaults(suiteName: "CotabbyTests.rig.phrases.\(UUID().uuidString)") ?? .standard
         ),
+        personalWordStore: PersonalWordStore(
+            fileURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent("CotabbyTests-words-\(UUID().uuidString).json")
+        ),
         // Same isolation for the usage log: its own defaults suite (so it starts off) and a file in
         // the test's temporary directory, never the app's real log.
         suggestionUsageLog: SuggestionUsageLog(

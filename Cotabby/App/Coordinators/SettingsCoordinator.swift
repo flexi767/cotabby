@@ -26,6 +26,7 @@ final class SettingsCoordinator: NSObject, NSWindowDelegate {
     private let onShowWelcome: () -> Void
     private let clearEmojiHistory: () -> Void
     private let phraseMemoryStore: PhraseMemoryStore
+    private let personalWordStore: PersonalWordStore
     private let suggestionUsageLog: SuggestionUsageLog
 
     private var settingsWindowController: NSWindowController?
@@ -53,6 +54,7 @@ final class SettingsCoordinator: NSObject, NSWindowDelegate {
         onShowWelcome: @escaping () -> Void,
         clearEmojiHistory: @escaping () -> Void,
         phraseMemoryStore: PhraseMemoryStore,
+        personalWordStore: PersonalWordStore,
         suggestionUsageLog: SuggestionUsageLog
     ) {
         self.appUpdateManager = appUpdateManager
@@ -70,6 +72,7 @@ final class SettingsCoordinator: NSObject, NSWindowDelegate {
         self.onShowWelcome = onShowWelcome
         self.clearEmojiHistory = clearEmojiHistory
         self.phraseMemoryStore = phraseMemoryStore
+        self.personalWordStore = personalWordStore
         self.suggestionUsageLog = suggestionUsageLog
     }
 
@@ -101,6 +104,7 @@ final class SettingsCoordinator: NSObject, NSWindowDelegate {
                     onShowWelcome: onShowWelcome,
                     clearEmojiHistory: clearEmojiHistory,
                     phraseMemoryStore: phraseMemoryStore,
+                    personalWordStore: personalWordStore,
                     suggestionUsageLog: suggestionUsageLog,
                     onQuit: { NSApplication.shared.terminate(nil) }
                 )

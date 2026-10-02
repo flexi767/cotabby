@@ -832,7 +832,7 @@ final class SuggestionSettingsStoreTests: XCTestCase {
     }
 
     /// Turning the feature off must not touch the phrases already learned — the user asked to stop
-    /// learning, not to be forgotten. Only "Forget Learned Phrases" clears that key.
+    /// learning, not to be forgotten. Only "Forget What Was Learned" clears that key.
     func test_savePhraseMemoryDisabledLeavesStoredPhrasesAlone() async {
         let defaults = makeIsolatedDefaults()
         let store = PhraseMemoryStore(defaults: defaults)

@@ -25,8 +25,8 @@ extension SuggestionCoordinator {
             disablePredictions(reason: disabledReason)
             return
         }
-        // A learned phrase the writer has started typing needs neither a pause nor the model.
-        if presentPhraseFastPathIfPossible() { return }
+        // A learned phrase or a strong word habit needs neither a pause nor the model.
+        if presentInstantSuggestionIfPossible() { return }
 
         // The debounce window adapts to the last generation latency: snappier when the model is
         // fast, calmer when it is slow (fewer doomed generations to cancel). The configured value
@@ -185,11 +185,13 @@ extension SuggestionCoordinator {
         return true
     }
 
-    /// Shows the rest of a learned phrase the writer has started typing, before any debounce or model
-    /// call (see `PhraseFastPath`). Runs on every schedule, so a miss must cost almost nothing and
-    /// leave no trace: it only reads, and every guard that fails just falls through to the normal
-    /// debounced generation, which applies its own gates (with their UI side effects) as before.
-    private func presentPhraseFastPathIfPossible() -> Bool {
+    /// Shows a suggestion this writer's own history already knows, before any debounce or model call:
+    /// first the rest of a learned phrase they have started typing (`PhraseFastPath`), else the
+    /// word(s) they habitually write next (`PersonalWordModel`). Runs on every schedule, so a miss
+    /// must cost almost nothing and leave no trace: it only reads, and every guard that fails just
+    /// falls through to the normal debounced generation, which applies its own gates (with their UI
+    /// side effects) as before.
+    private func presentInstantSuggestionIfPossible() -> Bool {
         guard settingsSnapshot.isPhraseMemoryEnabled,
               !userDefaults.bool(forKey: Self.phraseFastPathDisabledDefaultsKey) else { return false }
         // The host-publish poll usually captured the keystroke a moment ago, so this is normally
@@ -210,15 +212,24 @@ extension SuggestionCoordinator {
         case .terminal, .codeEditor: return false
         case .email, .chat, .browser, .other: break
         }
-        guard let phraseRemainder = PhraseFastPath.continuation(
+        let range = settingsSnapshot.effectiveWordRange
+        let instant: (text: String, source: String)
+        if let phraseRemainder = PhraseFastPath.continuation(
             precedingText: rawContext.precedingText,
             trailingText: rawContext.trailingText,
             snapshot: phraseMemoryStore.snapshot()
-        ) else { return false }
+        ) {
+            instant = (phraseRemainder, "phrase")
+        } else if rawContext.trailingText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  let words = personalWordStore.model.prediction(
+                      precedingText: rawContext.precedingText, maximumWords: range.highWords) {
+            instant = (words, "words")
+        } else {
+            return false
+        }
 
         let context = interactionState.materializeContext(from: rawContext)
-        let range = settingsSnapshot.effectiveWordRange
-        let text = SuggestionLengthPolicy.trimmed(phraseRemainder, minimum: range.lowWords, maximum: range.highWords)
+        let text = SuggestionLengthPolicy.trimmed(instant.text, minimum: range.lowWords, maximum: range.highWords)
         // The same display guards a model result passes at this caret.
         guard !TrailingDuplicationFilter.duplicatesTrailingText(text, trailingText: context.trailingText),
               case let .show(visibleText, wordEndingOnly) = completionPresentation(text: text, context: context, isFinal: true),
@@ -233,7 +244,7 @@ extension SuggestionCoordinator {
         qualityMetricsStore.recordGenerated()
         qualityMetricsStore.recordShown()
         suggestionUsageLog.recordGeneration(context: context, shownText: visibleText, suppressionReason: nil,
-                                            rawText: phraseRemainder, isRetry: false, latency: 0, source: "phrase")
+                                            rawText: instant.text, isRetry: false, latency: 0, source: instant.source)
         let session = startCompletionSession(prediction: text, visibleText: visibleText,
             context: context, latency: 0, isFinal: true, wordEndingOnly: wordEndingOnly)
         state = .ready(text: session.remainingText, latency: session.latency)
@@ -243,8 +254,8 @@ extension SuggestionCoordinator {
             context: context,
             isRightToLeft: TextDirectionDetector.isRightToLeft(context.precedingText)
         )
-        logStage("phrase-fast-path", workID: currentWorkID, generation: context.generation,
-                 message: "Showed a learned phrase without generating.")
+        logStage("instant-\(instant.source)", workID: currentWorkID, generation: context.generation,
+                 message: "Showed a suggestion from the writer's own history without generating.")
         prepareContinuation(after: session, rawContext: rawContext)
         return true
     }

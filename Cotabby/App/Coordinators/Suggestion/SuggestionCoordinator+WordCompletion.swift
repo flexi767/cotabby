@@ -68,8 +68,9 @@ extension SuggestionCoordinator {
         let language = spellingLanguageResolver.resolve(precedingText: context.precedingText,
                                                        currentWord: prefix, enabledLanguages: languages)
         let candidates = language.map { symSpellCorrector.completionCandidates(for: prefix, language: $0) } ?? []
+        let personal = settingsSnapshot.isPhraseMemoryEnabled ? personalWordStore.model.completion(of: prefix) : nil
         return WordCompletionFallback.suffix(for: prefix, references: completionReferenceWords(context: context),
-                                             dictionaryCandidates: candidates)
+                                             personalWord: personal, dictionaryCandidates: candidates)
     }
 
     func wasDismissed(_ text: String, context: FocusedInputContext) -> Bool {
