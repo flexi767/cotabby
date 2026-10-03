@@ -419,6 +419,11 @@ nonisolated struct FocusedInputSnapshot: Equatable {
     /// compiling unchanged.
     let formCounterpart: FormCounterpartReading?
 
+    /// On the Informex offer page: the vehicle the page describes, and where the "Mijn offerte" field
+    /// is on screen (Cocoa coordinates), for the search-link overlay beside it. Nil elsewhere.
+    let informexVehicle: InformexVehicle?
+    let offerFieldFrame: CGRect?
+
     /// Explicit initializer keeps `focusChangeSequence` immutable while preserving the old
     /// memberwise-call ergonomics for tests that do not care about focus identity.
     ///
@@ -452,7 +457,9 @@ nonisolated struct FocusedInputSnapshot: Equatable {
         hostTextMetrics: HostTextMetrics? = nil,
         elementFrameRect: CGRect? = nil,
         hostMarkedTextRange: NSRange? = nil,
-        formCounterpart: FormCounterpartReading? = nil
+        formCounterpart: FormCounterpartReading? = nil,
+        informexVehicle: InformexVehicle? = nil,
+        offerFieldFrame: CGRect? = nil
     ) {
         self.applicationName = applicationName
         self.bundleIdentifier = bundleIdentifier
@@ -481,6 +488,8 @@ nonisolated struct FocusedInputSnapshot: Equatable {
         self.elementFrameRect = elementFrameRect
         self.hostMarkedTextRange = hostMarkedTextRange
         self.formCounterpart = formCounterpart
+        self.informexVehicle = informexVehicle
+        self.offerFieldFrame = offerFieldFrame
     }
 
     var identity: FocusedInputIdentity {

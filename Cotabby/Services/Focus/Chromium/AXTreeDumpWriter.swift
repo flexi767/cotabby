@@ -88,6 +88,20 @@ enum AXTreeDumpWriter {
         out += "\n-- Form context (fields and text within 5 ancestors) --\n"
         dumpFormContext(of: formRoot, into: &out, depth: 0, budget: 400)
 
+        // The whole page's fields and text, from the web area: what a page-level feature (such as
+        // reading the vehicle on an offer page) can rely on, and how it is labelled.
+        var webArea: AXUIElement?
+        var climb = focusedElement
+        for _ in 0..<60 {
+            if AXHelper.stringValue(for: kAXRoleAttribute as CFString, on: climb) == "AXWebArea" { webArea = climb; break }
+            guard let parent = AXHelper.parentElement(of: climb) else { break }
+            climb = parent
+        }
+        if let webArea {
+            out += "\n-- Page (fields and text in the web area) --\n"
+            dumpFormContext(of: webArea, into: &out, depth: 0, budget: 400)
+        }
+
         out += "========== END DUMP ==========\n"
 
         guard let desktopURL = FileManager.default
@@ -131,7 +145,7 @@ enum AXTreeDumpWriter {
     }
 
     private static func dumpFormContext(of element: AXUIElement, into out: inout String, depth: Int, budget: Int) {
-        guard depth < 12, out.count < 200_000 else { return }
+        guard depth < 40, out.count < 400_000 else { return }
         for child in AXHelper.childElements(of: element).prefix(budget) {
             let role = AXHelper.stringValue(for: kAXRoleAttribute as CFString, on: child) ?? "?"
             if ["AXTextField", "AXTextArea", "AXStaticText", "AXComboBox", "AXPopUpButton"].contains(role) {

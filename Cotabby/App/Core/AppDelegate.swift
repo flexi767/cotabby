@@ -31,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let settingsCoordinator: SettingsCoordinator
 
     private let activationIndicatorController: ActivationIndicatorController
+    private let vehicleSearchOverlayController: VehicleSearchOverlayController
     private let focusDebugOverlayController: FocusDebugOverlayController?
     /// Retained for the app's lifetime because the environment owns its own `cancellables` (the only
     /// subscriptions wiring the focus-poll-interval setting and the global-toggle hotkey rebind to the
@@ -62,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         welcomeCoordinator = environment.welcomeCoordinator
         settingsCoordinator = environment.settingsCoordinator
         activationIndicatorController = environment.activationIndicatorController
+        vehicleSearchOverlayController = environment.vehicleSearchOverlayController
         focusDebugOverlayController = environment.focusDebugOverlayController
         super.init()
 
@@ -95,6 +97,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] snapshot in
                 self?.updateActivationIndicator(for: snapshot)
                 self?.focusDebugOverlayController?.update(for: snapshot)
+                // Search links beside the Informex offer field: only while that field is focused and
+                // the page names a vehicle (both are nil everywhere else, which hides the buttons).
+                self?.vehicleSearchOverlayController.update(
+                    vehicle: snapshot.context?.informexVehicle,
+                    fieldFrame: snapshot.context?.offerFieldFrame,
+                    hostBundleIdentifier: snapshot.bundleIdentifier
+                )
             }
             .store(in: &cancellables)
 
@@ -245,6 +254,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         CotabbyLogger.app.info("Cotabby terminating, releasing services")
         activationIndicatorController.hide(reason: "Activation indicator hidden because Cotabby is terminating.")
+        vehicleSearchOverlayController.hide()
         focusDebugOverlayController?.hide()
         suggestionCoordinator.stop()
         inlineCommandCoordinator.stop()

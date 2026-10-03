@@ -45,6 +45,7 @@ final class CotabbyAppEnvironment {
     let qualityMetricsStore: SuggestionQualityMetricsStore
     let settingsCoordinator: SettingsCoordinator
     let activationIndicatorController: ActivationIndicatorController
+    let vehicleSearchOverlayController: VehicleSearchOverlayController
     let focusDebugOverlayController: FocusDebugOverlayController?
 
     private var cancellables = Set<AnyCancellable>()
@@ -172,6 +173,7 @@ final class CotabbyAppEnvironment {
             faceMemoryDefaults: .standard
         )
         let activationIndicatorController = ActivationIndicatorController()
+        let vehicleSearchOverlayController = VehicleSearchOverlayController()
         let clipboardContextProvider = ClipboardContextProvider()
         let clipboardRelevanceFilter = ClipboardRelevanceFilter()
         let screenshotContextGenerator = ScreenshotContextGenerator()
@@ -384,6 +386,7 @@ final class CotabbyAppEnvironment {
         self.qualityMetricsStore = qualityMetricsStore
         self.settingsCoordinator = settingsCoordinator
         self.activationIndicatorController = activationIndicatorController
+        self.vehicleSearchOverlayController = vehicleSearchOverlayController
         self.focusDebugOverlayController = CotabbyDebugOptions.areOverlaysAvailable
             ? FocusDebugOverlayController()
             : nil
