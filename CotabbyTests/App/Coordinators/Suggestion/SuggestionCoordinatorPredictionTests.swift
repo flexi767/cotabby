@@ -228,6 +228,40 @@ final class SuggestionCoordinatorPredictionTests: SuggestionCoordinatorRigTestCa
         XCTAssertEqual(rig.coordinator.qualityMetricsStore.counters.suppressedByReason["inventedNumber"], 1)
     }
 
+    func test_anOfferAmountFieldShowsTheComputedAmountWithoutTheModel() async {
+        let rig = retained(makeCoordinatorRig(
+            snapshot: CotabbyTestFixtures.focusedInputSnapshot(
+                precedingText: "",
+                formCounterpart: FormCounterpartReading(targetRole: .gross, counterpartValue: "125000")
+            )
+        ))
+
+        rig.coordinator.schedulePrediction()
+
+        guard case let .ready(text, latency) = rig.coordinator.state else {
+            return XCTFail("Expected the computed amount at once, got \(rig.coordinator.state)")
+        }
+        XCTAssertEqual(text, "151250", "125000 + 21% VAT; six digits, yet not withheld as an invented number")
+        XCTAssertEqual(latency, 0)
+        XCTAssertTrue(rig.engine.requests.isEmpty)
+    }
+
+    func test_anOfferAmountFieldNeverAsksTheModelForAGuess() async {
+        let rig = retained(makeCoordinatorRig(
+            snapshot: CotabbyTestFixtures.focusedInputSnapshot(
+                precedingText: "99",
+                formCounterpart: FormCounterpartReading(targetRole: .gross, counterpartValue: "12500")
+            )
+        ))
+
+        rig.coordinator.schedulePrediction()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(rig.coordinator.state, .idle)
+        XCTAssertTrue(rig.engine.requests.isEmpty, "typed text is not the computed amount: show nothing, guess nothing")
+        XCTAssertNil(rig.interactionState.activeSession)
+    }
+
     func test_phraseFastPathStaysQuietWhenPhraseMemoryIsOff() async {
         let rig = retained(makeCoordinatorRig(
             snapshot: CotabbyTestFixtures.focusedInputSnapshot(precedingText: "Thanks! I will send the ")

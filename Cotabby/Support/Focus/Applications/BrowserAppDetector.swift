@@ -24,7 +24,8 @@ nonisolated enum BrowserAppDetector {
         "org.mozilla.firefox",
         "company.thebrowser.browser",  // Arc
         "com.brave.browser",
-        "com.microsoft.edgemac"
+        "com.microsoft.edgemac",
+        "com.operasoftware.opera"  // Opera (Chromium): same lazy web-AX tree as Chrome
     ]
 
     /// Chromium-family browsers whose web content uses the lazy web-AX tree and opaque text-marker
@@ -33,7 +34,8 @@ nonisolated enum BrowserAppDetector {
         "com.google.chrome",
         "company.thebrowser.browser",  // Arc
         "com.brave.browser",
-        "com.microsoft.edgemac"
+        "com.microsoft.edgemac",
+        "com.operasoftware.opera"  // Opera (Chromium): same lazy web-AX tree as Chrome
     ]
 
     /// Electron apps (Chromium under the hood) that ship editors worth covering. This is an

@@ -45,6 +45,9 @@ struct FocusSnapshotResolver {
     /// fields (see `FocusSessionScopedCache`).
     private let secureFieldVerdictCache = FocusSessionScopedCache<Bool>()
     private let terminalDetectionCache = FocusSessionScopedCache<Bool>()
+    /// The other offer field's value, read once per focus session: it cannot change while focus
+    /// stays in this field, and the read is a bounded tree search we do not want on every poll.
+    private let formCounterpartCache = FocusSessionScopedCache<FormCounterpartReading?>()
     /// The text margin the caret's paragraph wraps to, which a field's `AXFrame` does not reveal
     /// (Word's frame is the page edge, not the text margin). Up to three AX round trips, so each
     /// result is cached per focus session *and* per paragraph: the margin changes between an indented
@@ -307,6 +310,30 @@ struct FocusSnapshotResolver {
                     for: "AXDOMClassList" as CFString, on: focusedElement) ?? []
             )
         }
+        // Only on the one portal with linked offer fields (`VATCounterpartRule`), never elsewhere. Its
+        // form nests deeper than the 6-level URL climb above (measured in Opera), so when the window
+        // title names the portal the page URL is looked up further up; the host check still decides.
+        let portalURL = focusedURLString ?? (
+            !resolvedCandidate.isSecure && windowTitle?.localizedCaseInsensitiveContains("informex") == true
+                ? AXHelper.webURL(near: resolvedCandidate.element, maxClimb: 40) : nil
+        )
+        let formCounterpart: FormCounterpartReading? = !resolvedCandidate.isSecure
+            && VATCounterpartRule.applies(toURL: portalURL)
+            ? formCounterpartCache.value(forKey: resolvedCandidate.elementIdentifier,
+                                         focusChangeSequence: focusChangeSequence) {
+                let reading = Self.readFormCounterpart(around: resolvedCandidate.element)
+                CotabbyLogger.focus.debug(
+                    "Offer form field",
+                    metadata: [
+                        "title": .string(AXHelper.stringValue(for: "AXTitle" as CFString, on: resolvedCandidate.element) ?? "nil"),
+                        "dom_id": .string(AXHelper.stringValue(for: "AXDOMIdentifier" as CFString, on: resolvedCandidate.element) ?? "nil"),
+                        "role": .string(reading.map { "\($0.targetRole)" } ?? "unrecognized"),
+                        "counterpart_found": .string(reading == nil ? "no" : "yes")
+                    ]
+                )
+                return reading
+            }
+            : nil
         let context = FocusedInputSnapshot(
             applicationName: applicationName,
             bundleIdentifier: bundleIdentifier,
@@ -333,7 +360,8 @@ struct FocusSnapshotResolver {
             fieldPlaceholder: fieldPlaceholder,
             hostTextMetrics: Self.mergingRunLinePitch(hostTextMetrics, edges: observedContentEdges),
             elementFrameRect: resolvedCandidate.elementFrameRect,
-            hostMarkedTextRange: resolvedCandidate.markedTextRange ?? chromiumCompletionRange ?? smartComposeRange
+            hostMarkedTextRange: resolvedCandidate.markedTextRange ?? chromiumCompletionRange ?? smartComposeRange,
+            formCounterpart: formCounterpart
         )
 
         if let reason = Self.blockedReason(
@@ -1530,6 +1558,41 @@ struct FocusSnapshotResolver {
 
     /// A host whose line APIs answered nothing (CodeMirror in Obsidian) still shows its line pitch
     /// through its sibling text runs; that pitch lets the ghost wrap onto the host's next line.
+    /// Identifies the focused offer field and reads the other one: walks up to six ancestors and,
+    /// at each, searches a bounded subtree for the text field with the opposite role. Bounded (at
+    /// most 400 nodes per ancestor, depth 10) because it runs on the main actor; it only runs for a
+    /// field on the portal, once per focus session.
+    private static func readFormCounterpart(around element: AXUIElement) -> FormCounterpartReading? {
+        guard let role = VATCounterpartRule.role(
+            title: AXHelper.stringValue(for: "AXTitle" as CFString, on: element),
+            domIdentifier: AXHelper.stringValue(for: "AXDOMIdentifier" as CFString, on: element)
+        ) else { return nil }
+        let wanted: VATCounterpartRule.Role = role == .gross ? .net : .gross
+        var ancestor = element
+        for _ in 0..<6 {
+            guard let parent = AXHelper.parentElement(of: ancestor) else { break }
+            ancestor = parent
+            var queue: [(AXUIElement, Int)] = [(ancestor, 0)]
+            var visited = 0
+            while !queue.isEmpty, visited < 400 {
+                let (node, depth) = queue.removeFirst()
+                visited += 1
+                if AXHelper.stringValue(for: kAXRoleAttribute as CFString, on: node) == "AXTextField",
+                   VATCounterpartRule.role(
+                       title: AXHelper.stringValue(for: "AXTitle" as CFString, on: node),
+                       domIdentifier: AXHelper.stringValue(for: "AXDOMIdentifier" as CFString, on: node)
+                   ) == wanted {
+                    let value = AXHelper.stringValue(for: kAXValueAttribute as CFString, on: node) ?? ""
+                    return FormCounterpartReading(targetRole: role, counterpartValue: value,
+                                                  counterpartElement: AXElementHandle(node))
+                }
+                guard depth < 10 else { continue }
+                queue += AXHelper.childElements(of: node).map { ($0, depth + 1) }
+            }
+        }
+        return nil
+    }
+
     static func mergingRunLinePitch(_ metrics: HostTextMetrics?, edges: ObservedContentEdges?) -> HostTextMetrics? {
         guard metrics?.linePitch == nil, let pitch = edges?.linePitch, pitch > 0 else { return metrics }
         return HostTextMetrics(

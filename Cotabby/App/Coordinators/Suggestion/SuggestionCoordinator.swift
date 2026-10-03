@@ -162,6 +162,19 @@ final class SuggestionCoordinator: ObservableObject {
     /// text that contains one of these came (at least partly) from the model, so it must never
     /// become a known number (see `KnownPhoneNumbers`).
     var acceptedDigitRunsSinceCommit: [String] = []
+    /// Digits of the latest offer amount computed by `VATCounterpartRule`. Derived from the writer's
+    /// own entry in the other field, so `PhoneNumberGuard` treats it like a known number.
+    var trustedComputedAmountDigits: String?
+    /// The offer field being edited, if any: its value when focus arrived and its latest value, so
+    /// the other field can be filled when the writer leaves it (see `VATCounterpartRule`).
+    var offerFieldSession: OfferFieldSession?
+
+    struct OfferFieldSession {
+        let elementIdentifier: String
+        let reading: FormCounterpartReading
+        let valueAtFocus: String
+        var latestValue: String
+    }
     /// True once the continuation of the active suggestion has been prefetched, so the extra
     /// generation happens at most once per suggestion however many characters are typed through it.
     /// Cleared whenever the session is torn down or replaced.

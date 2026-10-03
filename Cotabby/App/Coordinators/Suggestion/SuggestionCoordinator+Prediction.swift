@@ -25,6 +25,8 @@ extension SuggestionCoordinator {
             disablePredictions(reason: disabledReason)
             return
         }
+        // An offer amount computed from the other field, or nothing (never a model guess there).
+        if presentFormCounterpartIfApplicable() { return }
         // A learned phrase or a strong word habit needs neither a pause nor the model.
         if presentInstantSuggestionIfPossible() { return }
 
@@ -92,6 +94,9 @@ extension SuggestionCoordinator {
             disablePredictions(reason: snapshot.capability.summary)
             return
         }
+        // Offer amount fields get only the computed amount (`presentFormCounterpartIfApplicable`),
+        // never a model guess.
+        guard rawContext.formCounterpart == nil else { return }
 
         guard passesPreGenerationGates(rawContext: rawContext, snapshot: snapshot) else {
             return
@@ -233,10 +238,45 @@ extension SuggestionCoordinator {
             return false
         }
 
-        let context = interactionState.materializeContext(from: rawContext)
         let text = instant.source == "number"
             ? instant.text
             : SuggestionLengthPolicy.trimmed(instant.text, minimum: range.lowWords, maximum: range.highWords)
+        return showInstantSuggestion(text, rawText: instant.text, source: instant.source, rawContext: rawContext)
+    }
+
+    /// On the offer form's linked amount fields (`VATCounterpartRule`), shows the amount computed from
+    /// the other field, or deliberately nothing: these are price fields, where a model guess is worse
+    /// than silence. Returns true whenever the focused field is one of them, so the caller never falls
+    /// through to the model there. Independent of the learning switch: nothing is learned or stored.
+    private func presentFormCounterpartIfApplicable() -> Bool {
+        focusModel.refreshIfStale(maxAgeMilliseconds: Self.freshSnapshotReuseWindowMilliseconds)
+        let snapshot = focusModel.snapshot
+        guard currentDisabledReason(focusSnapshot: snapshot) == nil,
+              let rawContext = snapshot.context, let counterpart = rawContext.formCounterpart else { return false }
+        if rawContext.selection.length == 0, !rawContext.isSecure,
+           rawContext.trailingText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let amount = VATCounterpartRule.suggestion(
+               for: counterpart.targetRole,
+               counterpartValue: counterpart.counterpartValue,
+               typed: rawContext.precedingText
+           ) {
+            // The amount is computed from the writer's own entry, so the number guard may show it.
+            trustedComputedAmountDigits = (rawContext.precedingText + amount).filter(\.isNumber)
+            if showInstantSuggestion(amount, rawText: amount, source: "vat", rawContext: rawContext) { return true }
+        }
+        cancelPredictionWork()
+        clearSuggestion()
+        hideOverlay(reason: "Overlay hidden: an offer amount field shows only the amount computed from the other field.")
+        state = .idle
+        return true
+    }
+
+    /// Presents an instant suggestion (no model call) through the same display guards a model result
+    /// passes at this caret. Shared by the history sources and the offer-form rule.
+    private func showInstantSuggestion(
+        _ text: String, rawText: String, source: String, rawContext: FocusedInputSnapshot
+    ) -> Bool {
+        let context = interactionState.materializeContext(from: rawContext)
         // The same display guards a model result passes at this caret.
         guard !TrailingDuplicationFilter.duplicatesTrailingText(text, trailingText: context.trailingText),
               case let .show(visibleText, wordEndingOnly) = completionPresentation(text: text, context: context, isFinal: true),
@@ -251,7 +291,7 @@ extension SuggestionCoordinator {
         qualityMetricsStore.recordGenerated()
         qualityMetricsStore.recordShown()
         suggestionUsageLog.recordGeneration(context: context, shownText: visibleText, suppressionReason: nil,
-                                            rawText: instant.text, isRetry: false, latency: 0, source: instant.source)
+                                            rawText: rawText, isRetry: false, latency: 0, source: source)
         let session = startCompletionSession(prediction: text, visibleText: visibleText,
             context: context, latency: 0, isFinal: true, wordEndingOnly: wordEndingOnly)
         state = .ready(text: session.remainingText, latency: session.latency)
@@ -261,9 +301,10 @@ extension SuggestionCoordinator {
             context: context,
             isRightToLeft: TextDirectionDetector.isRightToLeft(context.precedingText)
         )
-        logStage("instant-\(instant.source)", workID: currentWorkID, generation: context.generation,
+        logStage("instant-\(source)", workID: currentWorkID, generation: context.generation,
                  message: "Showed a suggestion from the writer's own history without generating.")
-        prepareContinuation(after: session, rawContext: rawContext)
+        // A computed amount is complete: the model must not be asked what follows it.
+        if source != "vat" { prepareContinuation(after: session, rawContext: rawContext) }
         return true
     }
 
@@ -335,7 +376,7 @@ extension SuggestionCoordinator {
         insertionChunk: String
     ) {
         guard !userDefaults.bool(forKey: Self.speculativePrefetchDisabledDefaultsKey) else { return }
-        guard !insertionChunk.isEmpty else { return }
+        guard !insertionChunk.isEmpty, rawContext.formCounterpart == nil else { return }
 
         let optimistic = SpeculativeAcceptanceContext.optimisticSnapshot(
             after: rawContext,
@@ -421,7 +462,8 @@ extension SuggestionCoordinator {
     /// never matches.
     func prefetchContinuation(after session: ActiveSuggestionSession, rawContext: FocusedInputSnapshot) {
         guard !userDefaults.bool(forKey: Self.continuationPrefetchDisabledDefaultsKey) else { return }
-        guard !hasPrefetchedContinuation, case .continuation = session.kind else { return }
+        guard !hasPrefetchedContinuation, case .continuation = session.kind,
+              rawContext.formCounterpart == nil else { return }
         let remaining = session.remainingText
         guard !remaining.isEmpty, remaining.count <= Self.continuationPrefetchRemainingCharacters else { return }
         // The field once the ghost is typed through, from the session's own text: not the live

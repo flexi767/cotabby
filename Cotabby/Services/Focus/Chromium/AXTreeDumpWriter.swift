@@ -37,7 +37,8 @@ enum AXTreeDumpWriter {
         focusedElementIdentifier: String
     ) {
         guard CotabbyDebugOptions.isWritingDesktopCaptureArtifacts,
-              bundleIdentifier == dumpAXBundleIdentifier,
+              bundleIdentifier == dumpAXBundleIdentifier
+                || BrowserAppDetector.isChromiumBrowser(bundleIdentifier: bundleIdentifier),
               lastDumpedElementID != focusedElementIdentifier else {
             return
         }
@@ -76,6 +77,16 @@ enum AXTreeDumpWriter {
 
         out += "\n-- Children (depth 6) --\n"
         dumpChildrenRecursive(of: focusedElement, into: &out, indent: "", depth: 0)
+
+        // The form around the field: neighbouring inputs and their labels, which the ancestor chain
+        // above does not show. Only fields and text, to keep the dump readable.
+        var formRoot = focusedElement
+        for _ in 0..<5 {
+            guard let parent = AXHelper.parentElement(of: formRoot) else { break }
+            formRoot = parent
+        }
+        out += "\n-- Form context (fields and text within 5 ancestors) --\n"
+        dumpFormContext(of: formRoot, into: &out, depth: 0, budget: 400)
 
         out += "========== END DUMP ==========\n"
 
@@ -117,6 +128,29 @@ enum AXTreeDumpWriter {
         if children.count > 20 {
             out += "\(indent)  ...+\(children.count - 20) more\n"
         }
+    }
+
+    private static func dumpFormContext(of element: AXUIElement, into out: inout String, depth: Int, budget: Int) {
+        guard depth < 12, out.count < 200_000 else { return }
+        for child in AXHelper.childElements(of: element).prefix(budget) {
+            let role = AXHelper.stringValue(for: kAXRoleAttribute as CFString, on: child) ?? "?"
+            if ["AXTextField", "AXTextArea", "AXStaticText", "AXComboBox", "AXPopUpButton"].contains(role) {
+                out += describeLabels(child, indent: String(repeating: "  ", count: depth) + role + " ")
+            }
+            dumpFormContext(of: child, into: &out, depth: depth + 1, budget: budget)
+        }
+    }
+
+    /// Role-independent naming: what a field is called (title, description, placeholder, linked
+    /// label, DOM id) and what it holds.
+    private static func describeLabels(_ element: AXUIElement, indent: String) -> String {
+        var parts: [String] = []
+        for attribute in ["AXTitle", "AXDescription", "AXPlaceholderValue", "AXDOMIdentifier", "AXValue"] {
+            if let text = AXHelper.stringValue(for: attribute as CFString, on: element), !text.isEmpty {
+                parts.append("\(attribute)=\"\(text.prefix(60))\"")
+            }
+        }
+        return parts.isEmpty ? "" : indent + parts.joined(separator: " ") + "\n"
     }
 
     private static func describeNode(_ element: AXUIElement, indent: String) -> String {

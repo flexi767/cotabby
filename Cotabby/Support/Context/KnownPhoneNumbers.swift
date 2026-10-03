@@ -41,6 +41,15 @@ struct KnownPhoneNumbers: Codable, Equatable, Sendable {
         entries.contains { $0.digits.count > digits.count && $0.digits.hasPrefix(digits) }
     }
 
+    /// A copy that also accepts `digits`, for an amount the app computed from the writer's own entry.
+    /// Never persisted: the store's copy is unchanged.
+    func trusting(digits: String) -> KnownPhoneNumbers {
+        guard !digits.isEmpty, !contains(digits: digits) else { return self }
+        var copy = self
+        copy.entries.append(Entry(display: digits, digits: digits, count: 0, lastUsedAt: .distantPast))
+        return copy
+    }
+
     // MARK: - Learning
 
     /// Records every phone-shaped number in finished text, except any that contains digits the

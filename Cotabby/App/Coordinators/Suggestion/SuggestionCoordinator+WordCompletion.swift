@@ -41,8 +41,9 @@ extension SuggestionCoordinator {
     /// nothing worth showing remains. Runs regardless of the learning switch: with learning off there
     /// are no known numbers, so every phone-shaped number from the model is withheld.
     func vettedForNumbers(_ text: String, context: FocusedInputContext) -> String? {
-        PhoneNumberGuard.vetted(completion: text, precedingText: context.precedingText,
-                                known: personalWordStore.knownNumbers)
+        var known = personalWordStore.knownNumbers
+        if let computed = trustedComputedAmountDigits { known = known.trusting(digits: computed) }
+        return PhoneNumberGuard.vetted(completion: text, precedingText: context.precedingText, known: known)
     }
 
     func completionPresentation(

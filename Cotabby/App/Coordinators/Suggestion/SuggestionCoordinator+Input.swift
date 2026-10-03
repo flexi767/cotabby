@@ -74,6 +74,12 @@ extension SuggestionCoordinator {
         CotabbyLogger.suggestion.trace(
             "Focus snapshot changed: app=\(snapshot.applicationName) capability=\(snapshot.capability.shortLabel) detail=\(changedDetail)"
         )
+        let offerFieldWasEmptied = trackOfferField(snapshot)
+        defer {
+            // Emptying an offer field (select all, delete) produces no keystroke the prediction path
+            // acts on once the field reads empty, so offer the computed amount here.
+            if offerFieldWasEmptied, interactionState.activeSession == nil { schedulePrediction() }
+        }
         // Learn from the writer's own finished text. This rides the focus stream rather than the
         // keystroke stream on purpose: the signal that a message was sent is the field going empty,
         // which produces a focus snapshot but no keystroke Cotabby can see.
@@ -190,7 +196,8 @@ extension SuggestionCoordinator {
             // Preserve the existing typing-lookahead restart behavior without treating passive
             // focus as new typing (which could trigger automatic typo replacement in the host).
             // Other new fields resume on input or fresh visual context, after all old work is gone.
-            if shouldRestartTypingPrediction {
+            // An offer amount field gets its computed amount the moment it is focused, before typing.
+            if shouldRestartTypingPrediction || focusedContext.formCounterpart != nil {
                 schedulePrediction()
             }
             return
@@ -240,6 +247,34 @@ extension SuggestionCoordinator {
             ).request
             await suggestionEngine.prewarm(for: request)
         }
+    }
+
+    /// Follows the offer field being edited (`VATCounterpartRule`). When focus leaves it, fills the other
+    /// field if the rule says so. Returns true when the focused offer field just became empty.
+    private func trackOfferField(_ snapshot: FocusSnapshot) -> Bool {
+        let context = snapshot.context
+        if let session = offerFieldSession, context?.elementIdentifier != session.elementIdentifier {
+            offerFieldSession = nil
+            if let value = VATCounterpartRule.autofillValue(
+                editedRole: session.reading.targetRole,
+                editedValue: session.latestValue,
+                editedValueAtFocus: session.valueAtFocus,
+                counterpartValueAtFocus: session.reading.counterpartValue
+            ), let handle = session.reading.counterpartElement {
+                FormCounterpartWriter.write(value, to: handle)
+            }
+        }
+        guard let context, let reading = context.formCounterpart else { return false }
+        let value = context.precedingText + context.trailingText
+        guard var session = offerFieldSession else {
+            offerFieldSession = OfferFieldSession(elementIdentifier: context.elementIdentifier, reading: reading,
+                                                  valueAtFocus: value, latestValue: value)
+            return false
+        }
+        let wasEmptied = !session.latestValue.isEmpty && value.isEmpty
+        session.latestValue = value
+        offerFieldSession = session
+        return wasEmptied
     }
 
     /// Feeds the focused field's full text to the commit detector and records whatever it reports

@@ -414,6 +414,11 @@ nonisolated struct FocusedInputSnapshot: Equatable {
     /// compiling unchanged.
     let hostTextMetrics: HostTextMetrics?
 
+    /// On a form with linked amount fields (`VATCounterpartRule`), which field this is and the other
+    /// field's value. Nil for every other field. The initializer default keeps existing call sites
+    /// compiling unchanged.
+    let formCounterpart: FormCounterpartReading?
+
     /// Explicit initializer keeps `focusChangeSequence` immutable while preserving the old
     /// memberwise-call ergonomics for tests that do not care about focus identity.
     ///
@@ -446,7 +451,8 @@ nonisolated struct FocusedInputSnapshot: Equatable {
         fieldPlaceholder: String? = nil,
         hostTextMetrics: HostTextMetrics? = nil,
         elementFrameRect: CGRect? = nil,
-        hostMarkedTextRange: NSRange? = nil
+        hostMarkedTextRange: NSRange? = nil,
+        formCounterpart: FormCounterpartReading? = nil
     ) {
         self.applicationName = applicationName
         self.bundleIdentifier = bundleIdentifier
@@ -474,6 +480,7 @@ nonisolated struct FocusedInputSnapshot: Equatable {
         self.hostTextMetrics = hostTextMetrics
         self.elementFrameRect = elementFrameRect
         self.hostMarkedTextRange = hostMarkedTextRange
+        self.formCounterpart = formCounterpart
     }
 
     var identity: FocusedInputIdentity {
