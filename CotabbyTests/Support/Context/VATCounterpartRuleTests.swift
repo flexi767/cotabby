@@ -12,10 +12,14 @@ final class VATCounterpartRuleTests: XCTestCase {
     }
 
     func testOnlyOnThePortal() {
-        XCTAssertTrue(VATCounterpartRule.applies(toURL: "https://my.informex-vehicle-online.be/offers/123"))
-        XCTAssertTrue(VATCounterpartRule.applies(toURL: "https://informex-vehicle-online.be/"))
-        XCTAssertFalse(VATCounterpartRule.applies(toURL: "https://example.com/informex-vehicle-online.be"))
-        XCTAssertFalse(VATCounterpartRule.applies(toURL: "https://evil-informex-vehicle-online.be.example.com/"))
+        XCTAssertTrue(VATCounterpartRule.applies(toURL: "https://my.informex-vehicle-online.be/auction"))
+        XCTAssertTrue(VATCounterpartRule.applies(toURL: "https://my.informex-vehicle-online.be/auction?id=42"))
+        XCTAssertTrue(VATCounterpartRule.applies(toURL: "https://my.informex-vehicle-online.be/auction/42"))
+        XCTAssertFalse(VATCounterpartRule.applies(toURL: "https://my.informex-vehicle-online.be/"), "other portal pages")
+        XCTAssertFalse(VATCounterpartRule.applies(toURL: "https://my.informex-vehicle-online.be/auctionhistory"))
+        XCTAssertFalse(VATCounterpartRule.applies(toURL: "https://my.informex-vehicle-online.be/settings/auction"))
+        XCTAssertFalse(VATCounterpartRule.applies(toURL: "https://example.com/informex-vehicle-online.be/auction"))
+        XCTAssertFalse(VATCounterpartRule.applies(toURL: "https://evil-informex-vehicle-online.be.example.com/auction"))
         XCTAssertFalse(VATCounterpartRule.applies(toURL: nil))
     }
 

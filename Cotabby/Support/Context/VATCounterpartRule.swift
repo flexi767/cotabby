@@ -23,10 +23,15 @@ nonisolated enum VATCounterpartRule {
 
     static let vatMultiplier: Decimal = 1.21
     static let hostSuffix = "informex-vehicle-online.be"
+    /// The offer page (measured from the live portal: `/auction`). Other pages on the portal never
+    /// trigger the rule, even if they reuse the field names.
+    static let offerPagePath = "/auction"
 
     static func applies(toURL urlString: String?) -> Bool {
-        guard let urlString, let host = URL(string: urlString)?.host?.lowercased() else { return false }
-        return host == hostSuffix || host.hasSuffix("." + hostSuffix)
+        guard let urlString, let url = URL(string: urlString), let host = url.host?.lowercased() else { return false }
+        guard host == hostSuffix || host.hasSuffix("." + hostSuffix) else { return false }
+        let path = url.path.lowercased()
+        return path == offerPagePath || path.hasPrefix(offerPagePath + "/")
     }
 
     /// Which offer field this is, from its accessible title or DOM id (measured on the live form:
