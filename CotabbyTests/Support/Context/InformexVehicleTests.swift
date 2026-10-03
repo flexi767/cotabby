@@ -41,3 +41,26 @@ final class InformexVehicleTests: XCTestCase {
             .searchURL(for: .mobileBG)!.absoluteString.contains("model="), "absent details are left out")
     }
 }
+
+@MainActor
+final class VehicleSearchIconTrimTests: XCTestCase {
+    /// A 32x32 image with an opaque 20x20 square inside a transparent margin, like mobile.bg's favicon.
+    private func paddedIcon() -> NSImage {
+        let image = NSImage(size: NSSize(width: 32, height: 32))
+        image.lockFocus()
+        NSColor.clear.setFill()
+        NSRect(x: 0, y: 0, width: 32, height: 32).fill()
+        NSColor.white.setFill()
+        NSRect(x: 6, y: 6, width: 20, height: 20).fill()
+        image.unlockFocus()
+        return image
+    }
+
+    func testTransparentMarginsAreTrimmedSoNoBackgroundShowsAround() throws {
+        let trimmed = VehicleSearchOverlayController.trimmingTransparentMargins(paddedIcon())
+        let cg = try XCTUnwrap(trimmed.cgImage(forProposedRect: nil, context: nil, hints: nil))
+        let original = try XCTUnwrap(paddedIcon().cgImage(forProposedRect: nil, context: nil, hints: nil))
+        XCTAssertLessThan(cg.width, original.width)
+        XCTAssertEqual(Double(cg.width) / Double(original.width), 20.0 / 32.0, accuracy: 0.05)
+    }
+}

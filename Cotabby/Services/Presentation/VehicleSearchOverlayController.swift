@@ -83,7 +83,8 @@ final class VehicleSearchOverlayController: NSObject {
             button.isBordered = false
             button.wantsLayer = true
             button.layer?.cornerRadius = 6
-            button.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.92).cgColor
+            button.layer?.masksToBounds = true
+            button.layer?.backgroundColor = Self.textFallbackBackground
             button.font = .systemFont(ofSize: 10, weight: .semibold)
             button.imageScaling = .scaleProportionallyUpOrDown
             button.toolTip = Self.tooltips[target]
@@ -91,9 +92,9 @@ final class VehicleSearchOverlayController: NSObject {
             button.translatesAutoresizingMaskIntoConstraints = false
             button.widthAnchor.constraint(equalToConstant: Self.buttonSize.width).isActive = true
             button.heightAnchor.constraint(equalToConstant: Self.buttonSize.height).isActive = true
-            if let icon = icons[target] { button.image = icon; button.imagePosition = .imageOnly }
             stack.addArrangedSubview(button)
             buttons[target] = button
+            if let icon = icons[target] { show(icon, on: button) }
         }
         panel.contentView = stack
         self.panel = panel
@@ -144,10 +145,38 @@ final class VehicleSearchOverlayController: NSObject {
         }
     }
 
+    private static let textFallbackBackground = NSColor.windowBackgroundColor.withAlphaComponent(0.92).cgColor
+
     private func apply(_ image: NSImage, to target: InformexVehicle.SearchTarget) {
-        icons[target] = image
+        let trimmed = Self.trimmingTransparentMargins(image)
+        icons[target] = trimmed
         guard let button = buttons[target] else { return }
+        show(trimmed, on: button)
+    }
+
+    /// A real icon fills the button on its own: the grey fallback backing would show through any
+    /// transparent part of it (mobile.bg's favicon is a logo inside a transparent margin).
+    private func show(_ image: NSImage, on button: NSButton) {
         button.image = image
         button.imagePosition = .imageOnly
+        button.layer?.backgroundColor = NSColor.clear.cgColor
+    }
+
+    /// `image` cropped to its non-transparent pixels, so a favicon drawn inside a transparent margin
+    /// fills the button like one drawn edge to edge. Unchanged when it has no margin or no bitmap.
+    static func trimmingTransparentMargins(_ image: NSImage) -> NSImage {
+        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return image }
+        let bitmap = NSBitmapImageRep(cgImage: cgImage)
+        var minX = bitmap.pixelsWide, minY = bitmap.pixelsHigh, maxX = -1, maxY = -1
+        for y in 0..<bitmap.pixelsHigh {
+            for x in 0..<bitmap.pixelsWide where (bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.05 {
+                minX = min(minX, x); maxX = max(maxX, x); minY = min(minY, y); maxY = max(maxY, y)
+            }
+        }
+        guard maxX >= minX, maxY >= minY,
+              (maxX - minX + 1, maxY - minY + 1) != (bitmap.pixelsWide, bitmap.pixelsHigh),
+              let cropped = cgImage.cropping(to: CGRect(x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1))
+        else { return image }
+        return NSImage(cgImage: cropped, size: NSSize(width: cropped.width, height: cropped.height))
     }
 }
