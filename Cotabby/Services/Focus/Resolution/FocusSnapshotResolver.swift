@@ -48,8 +48,6 @@ struct FocusSnapshotResolver {
     /// The other offer field's value, read once per focus session: it cannot change while focus
     /// stays in this field, and the read is a bounded tree search we do not want on every poll.
     private let formCounterpartCache = FocusSessionScopedCache<FormCounterpartReading?>()
-    /// The vehicle on the offer page, read once per focus session (a bounded walk of the page text).
-    private let informexVehicleCache = FocusSessionScopedCache<InformexVehicle?>()
     /// The text margin the caret's paragraph wraps to, which a field's `AXFrame` does not reveal
     /// (Word's frame is the page edge, not the text margin). Up to three AX round trips, so each
     /// result is cached per focus session *and* per paragraph: the margin changes between an indented
@@ -336,17 +334,6 @@ struct FocusSnapshotResolver {
                 return reading
             }
             : nil
-        // Same page, same session: the vehicle, and where "Mijn offerte" (the net field) is right now.
-        let informexVehicle: InformexVehicle? = formCounterpart == nil ? nil
-            : informexVehicleCache.value(forKey: resolvedCandidate.elementIdentifier,
-                                         focusChangeSequence: focusChangeSequence) {
-                InformexVehicle.parse(pageTexts: Self.pageTexts(around: resolvedCandidate.element))
-            }
-        let offerFieldFrame: CGRect? = formCounterpart.flatMap { reading in
-            let netField = reading.targetRole == .net ? resolvedCandidate.element : reading.counterpartElement?.element
-            return netField.flatMap { AXHelper.rectValue(for: "AXFrame" as CFString, on: $0) }
-                .map { AXHelper.cocoaRect(fromAccessibilityRect: $0) }
-        }
         let context = FocusedInputSnapshot(
             applicationName: applicationName,
             bundleIdentifier: bundleIdentifier,
@@ -374,9 +361,7 @@ struct FocusSnapshotResolver {
             hostTextMetrics: Self.mergingRunLinePitch(hostTextMetrics, edges: observedContentEdges),
             elementFrameRect: resolvedCandidate.elementFrameRect,
             hostMarkedTextRange: resolvedCandidate.markedTextRange ?? chromiumCompletionRange ?? smartComposeRange,
-            formCounterpart: formCounterpart,
-            informexVehicle: informexVehicle,
-            offerFieldFrame: offerFieldFrame
+            formCounterpart: formCounterpart
         )
 
         if let reason = Self.blockedReason(
@@ -1573,30 +1558,6 @@ struct FocusSnapshotResolver {
 
     /// A host whose line APIs answered nothing (CodeMirror in Obsidian) still shows its line pitch
     /// through its sibling text runs; that pitch lets the ghost wrap onto the host's next line.
-    /// The page's static text in reading order, from its web area: a bounded walk (3000 nodes) that
-    /// only runs on the offer page, once per focus session.
-    private static func pageTexts(around element: AXUIElement) -> [String] {
-        var webArea = element
-        for _ in 0..<60 {
-            if AXHelper.stringValue(for: kAXRoleAttribute as CFString, on: webArea) == "AXWebArea" { break }
-            guard let parent = AXHelper.parentElement(of: webArea) else { return [] }
-            webArea = parent
-        }
-        var texts: [String] = []
-        var visited = 0
-        func walk(_ node: AXUIElement, depth: Int) {
-            guard visited < 3000, depth < 40 else { return }
-            visited += 1
-            if AXHelper.stringValue(for: kAXRoleAttribute as CFString, on: node) == "AXStaticText",
-               let text = AXHelper.stringValue(for: kAXValueAttribute as CFString, on: node), !text.isEmpty {
-                texts.append(text)
-            }
-            for child in AXHelper.childElements(of: node) { walk(child, depth: depth + 1) }
-        }
-        walk(webArea, depth: 0)
-        return texts
-    }
-
     /// Identifies the focused offer field and reads the other one: walks up to six ancestors and,
     /// at each, searches a bounded subtree for the text field with the opposite role. Bounded (at
     /// most 400 nodes per ancestor, depth 10) because it runs on the main actor; it only runs for a

@@ -732,6 +732,7 @@
 		832ACFA7639BA6F769CFA4E1 /* SuggestionConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E3BA84BBFD8B2501767516C /* SuggestionConfiguration.swift */; };
 		832FB4EEA935CA4D67F4478D /* MenuBarSections.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12F6FDB6D09851CC5C6649EF /* MenuBarSections.swift */; };
 		833A5A25C0F5B0E9A46DA04D /* SyntheticReplacePlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57F9A25D8935B8C2156D7CE5 /* SyntheticReplacePlannerTests.swift */; };
+		8350829DA2FF742BB37A2FD4 /* InformexPageWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0C6A989DEB78BA20D6C4474 /* InformexPageWatcher.swift */; };
 		83561CE6F31867134AAB9AA0 /* PersonalWordModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 075C856C3E6D6A930B1E4084 /* PersonalWordModel.swift */; };
 		838C65351C4DF47E57109E85 /* LowPowerModeMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2CC3E0A24F4608350657D80 /* LowPowerModeMonitor.swift */; };
 		8399FCB365FB429CA435F143 /* SuggestionCoordinator+Prediction.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED7B674D586540F35682C573 /* SuggestionCoordinator+Prediction.swift */; };
@@ -884,6 +885,7 @@
 		9D18074D595996B968577428 /* ArithmeticEvaluator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5897D28F4DBEAF4792FB4D24 /* ArithmeticEvaluator.swift */; };
 		9D31509FA34AE79C0EEAC95B /* ConfidenceSuppressionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 122298AE151ECEEC175878BF /* ConfidenceSuppressionPolicy.swift */; };
 		9D5FA6B74C097E3B208BBE55 /* FocusedInputContextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D92D3845798F3EF8F24853AE /* FocusedInputContextTests.swift */; };
+		9DAA1E0458CA5AA688BB61C7 /* InformexPageWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0C6A989DEB78BA20D6C4474 /* InformexPageWatcher.swift */; };
 		9DED90A7115B08BA635C6F93 /* SOURCES.md in Resources */ = {isa = PBXBuildFile; fileRef = 054987E76CA9D1FA4F81EA8F /* SOURCES.md */; };
 		9E031B67A275BB3E049EFC2F /* frequency_dictionary_en_82_765.txt in Resources */ = {isa = PBXBuildFile; fileRef = 99FBB636008490B66CF26772 /* frequency_dictionary_en_82_765.txt */; };
 		9E090C9B78B2966BBCEE8A65 /* PermissionGuidanceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0C41A249D9538B91B7FA8A9 /* PermissionGuidanceController.swift */; };
@@ -942,6 +944,7 @@
 		A719715F82756C50E5A5C47B /* Aria2ProvisionerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7F727A325ECE687B32CDC38 /* Aria2ProvisionerTests.swift */; };
 		A76F1AFB944C10A9EB06DBF9 /* ClipboardContextProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C48F57D741CE10C195AF167 /* ClipboardContextProviderTests.swift */; };
 		A7A1B9BE242959B3EE396D27 /* LaunchAtLogin in Frameworks */ = {isa = PBXBuildFile; productRef = 7B0278A63FEEE8DEDB6C50DB /* LaunchAtLogin */; };
+		A7CF58465A28807FC97AC9B3 /* InformexPageWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0C6A989DEB78BA20D6C4474 /* InformexPageWatcher.swift */; };
 		A7F8B6C13DD0BA5304BCDFD2 /* OverlayController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A3C5A66AA93E50E4A64ED46 /* OverlayController.swift */; };
 		A8580B09E21C2B44A1D9B0BA /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9805B5D25A6E261D92E0ADD /* WelcomeView.swift */; };
 		A8854697A9EB29DB737C4A26 /* SelfCaptureGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 571B221ACAFED86DABB10F48 /* SelfCaptureGateTests.swift */; };
@@ -1917,6 +1920,7 @@
 		C01F11F7F29EFC3A27A1EE5D /* FocusSnapshotResolverSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusSnapshotResolverSelectionTests.swift; sourceTree = "<group>"; };
 		C0894DA7EA3E157596DA0E66 /* SuggestionStaleAcceptanceEchoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionStaleAcceptanceEchoTests.swift; sourceTree = "<group>"; };
 		C08EC70547439E840417F5A5 /* GhostBaselinePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhostBaselinePolicy.swift; sourceTree = "<group>"; };
+		C0C6A989DEB78BA20D6C4474 /* InformexPageWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InformexPageWatcher.swift; sourceTree = "<group>"; };
 		C1337F5C94FA9A6388841805 /* FocusPollBackoffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusPollBackoffTests.swift; sourceTree = "<group>"; };
 		C1A8962FE08E1C76F0EEF423 /* CaretRunPlacementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaretRunPlacementTests.swift; sourceTree = "<group>"; };
 		C1D68B5ABA427D3E87000E78 /* InlineCommandCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InlineCommandCoordinator.swift; sourceTree = "<group>"; };
@@ -3691,6 +3695,7 @@
 			isa = PBXGroup;
 			children = (
 				082FFB5D8D00A9F55D90A578 /* FormCounterpartWriter.swift */,
+				C0C6A989DEB78BA20D6C4474 /* InformexPageWatcher.swift */,
 			);
 			path = Forms;
 			sourceTree = "<group>";
@@ -4551,6 +4556,7 @@
 				3C5DAFEC0A4232DE22FF616E /* HuggingFaceModelBrowserView.swift in Sources */,
 				0928D412A287765A1A698361 /* HuggingFaceModels.swift in Sources */,
 				3CE5805D4991AAAF5508D600 /* HuggingFaceSearchService.swift in Sources */,
+				A7CF58465A28807FC97AC9B3 /* InformexPageWatcher.swift in Sources */,
 				A1A27E74F9F5392C4ABC2028 /* InformexVehicle.swift in Sources */,
 				012073965F9BD12E1BB52D7D /* InkBaselineAnalyzer.swift in Sources */,
 				F65A798170F71100A3B6CDE4 /* InkCaretAnalyzer.swift in Sources */,
@@ -4896,6 +4902,7 @@
 				7E11BEAD32E9FF170C92000A /* HuggingFaceModelBrowserView.swift in Sources */,
 				FF46903861BA67AED8C24EF8 /* HuggingFaceModels.swift in Sources */,
 				6AF17537A3A91BAA875DEA0F /* HuggingFaceSearchService.swift in Sources */,
+				9DAA1E0458CA5AA688BB61C7 /* InformexPageWatcher.swift in Sources */,
 				2CC3C8D9E0F98B1DEED365FC /* InformexVehicle.swift in Sources */,
 				B97F5A32DC8C9CE048F231D7 /* InkBaselineAnalyzer.swift in Sources */,
 				1380A12C2A092F3B2334B5F3 /* InkCaretAnalyzer.swift in Sources */,
@@ -5241,6 +5248,7 @@
 				F0DCEFED640B453A5ECEB810 /* HuggingFaceModelBrowserView.swift in Sources */,
 				AB1B25E213AE0A79C6993239 /* HuggingFaceModels.swift in Sources */,
 				39910B6812663A61FC13D6BD /* HuggingFaceSearchService.swift in Sources */,
+				8350829DA2FF742BB37A2FD4 /* InformexPageWatcher.swift in Sources */,
 				DE9BB627D4EB3A41282E7E4E /* InformexVehicle.swift in Sources */,
 				3A68F284E2C24093B115EC77 /* InkBaselineAnalyzer.swift in Sources */,
 				CE2D1E5B1F987FC76024DB46 /* InkCaretAnalyzer.swift in Sources */,

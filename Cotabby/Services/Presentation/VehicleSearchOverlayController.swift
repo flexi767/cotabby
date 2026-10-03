@@ -14,8 +14,8 @@ import Logging
 /// shipped with Cotabby (a public repository should not redistribute other companies' logos);
 /// until they arrive, or if they cannot be fetched, the buttons show the site names as text.
 ///
-/// Owned by `CotabbyAppEnvironment`, driven by `AppDelegate` from every focus snapshot: shown while
-/// an offer field on the offer page is focused and the page names a vehicle, hidden otherwise.
+/// Owned by `CotabbyAppEnvironment`, driven by `AppDelegate` from `InformexPageWatcher`: shown while
+/// the offer page is in front and its "Mijn offerte" field is visible, hidden otherwise.
 @MainActor
 final class VehicleSearchOverlayController: NSObject {
     private var panel: NSPanel?

@@ -46,6 +46,7 @@ final class CotabbyAppEnvironment {
     let settingsCoordinator: SettingsCoordinator
     let activationIndicatorController: ActivationIndicatorController
     let vehicleSearchOverlayController: VehicleSearchOverlayController
+    let informexPageWatcher: InformexPageWatcher
     let focusDebugOverlayController: FocusDebugOverlayController?
 
     private var cancellables = Set<AnyCancellable>()
@@ -174,6 +175,7 @@ final class CotabbyAppEnvironment {
         )
         let activationIndicatorController = ActivationIndicatorController()
         let vehicleSearchOverlayController = VehicleSearchOverlayController()
+        let informexPageWatcher = InformexPageWatcher()
         let clipboardContextProvider = ClipboardContextProvider()
         let clipboardRelevanceFilter = ClipboardRelevanceFilter()
         let screenshotContextGenerator = ScreenshotContextGenerator()
@@ -387,6 +389,7 @@ final class CotabbyAppEnvironment {
         self.settingsCoordinator = settingsCoordinator
         self.activationIndicatorController = activationIndicatorController
         self.vehicleSearchOverlayController = vehicleSearchOverlayController
+        self.informexPageWatcher = informexPageWatcher
         self.focusDebugOverlayController = CotabbyDebugOptions.areOverlaysAvailable
             ? FocusDebugOverlayController()
             : nil
