@@ -216,6 +216,8 @@ final class SuggestionCoordinator: ObservableObject {
     /// Pure state for the bounded "keep owning Tab" window after a final-chunk acceptance. The
     /// coordinator continues to own the timer and input-monitor effects around these transitions.
     var postExhaustionAcceptanceState = PostExhaustionAcceptanceState()
+    /// Extra attempts already spent on the current press of the accept key (see `retryInsistently`).
+    var insistentRetryCount = 0
 
     /// Watches the focused field's text across focus events for the moment the writer finished with
     /// it (sent it, or moved on), which is the only moment `phraseMemoryStore` learns from.

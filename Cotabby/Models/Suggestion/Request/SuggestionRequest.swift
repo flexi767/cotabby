@@ -90,6 +90,11 @@ struct SuggestionRequest: Equatable, Sendable {
     /// was unusable: the local engine masks this token from the first sample so the same prompt
     /// yields its next-best opening. `nil` on every ordinary request, and a retry never retries.
     var retryBannedSeedToken: Int32?
+    /// The writer pressed the accept key and is waiting for a suggestion to be written, so an empty
+    /// answer is a failure, not a polite "nothing to add". The local engine then keeps decoding when
+    /// its top choice is to stop and ignores the confidence floor. Sampling settings are unchanged,
+    /// so the retained prompt KV is still reused.
+    var insists = false
     /// Ask the local engine for the completion's mean token log-probability even though no floor
     /// is set. The coordinator sets it only while the opt-in usage log is recording.
     var measuresConfidence = false

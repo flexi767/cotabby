@@ -932,6 +932,8 @@ extension SuggestionCoordinator {
     func withOutcomeFeedback(_ request: SuggestionRequest) -> SuggestionRequest {
         var request = request
         request.measuresConfidence = suggestionUsageLog.isEnabled
+        // A pressed accept key is waiting on this request (see `requestSuggestionForIdleAcceptKey`).
+        request.insists = postExhaustionAcceptanceState.hasQueuedAccept
         request.confidenceFloorOverride = adaptiveConfidenceFloor.floor(
             for: request.context.bundleIdentifier,
             now: Date()
@@ -976,6 +978,39 @@ extension SuggestionCoordinator {
                  message: "Retrying once with the opening token banned after \(String(describing: failure)).",
                  rawOutput: result.rawText, normalizedOutput: result.text)
         dispatchGeneration(request: request, workID: workID)
+    }
+
+    /// How many extra attempts one press of the accept key may cost when the model's answer cannot
+    /// be shown. Each reuses the prompt KV, so together they stay well inside the press's window.
+    static let insistentRetryLimit = 2
+
+    /// While a pressed accept key waits for a suggestion, an empty or rejected answer is retried
+    /// with the opening it chose banned and the engine's early stops off (`SuggestionRequest.insists`)
+    /// up to `insistentRetryLimit` times. The made-up-number and nonsense guards still apply to every
+    /// attempt. Returns false when this is not such a request, so the ordinary one-shot retry runs.
+    private func retryInsistently(
+        after result: SuggestionResult,
+        pressIsWaiting: Bool,
+        workID: UInt64,
+        liveContext: FocusedInputContext
+    ) -> Bool {
+        guard pressIsWaiting,
+              insistentRetryCount < Self.insistentRetryLimit,
+              workController.isCurrent(workID),
+              var request = latestDispatchedRequest,
+              request.generation == result.generation,
+              liveContext.generation == result.generation else { return false }
+        insistentRetryCount += 1
+        // Discarding the unusable answer hid the overlay, which closed the press's window; hold the
+        // press again so the retry's first word is still written.
+        armPostExhaustionAcceptance(windowSeconds: Self.requestedSuggestionAcceptanceWindowSeconds)
+        postExhaustionAcceptanceState.queueAcceptIfArmed()
+        request.insists = true
+        // Ban the opening the failed answer chose, so the next attempt cannot simply repeat it.
+        request.retryBannedSeedToken = result.firstToken ?? request.retryBannedSeedToken
+        CotabbyLogger.app.info("Pressed accept key got no usable suggestion; retrying (attempt \(insistentRetryCount))")
+        dispatchGeneration(request: request, workID: workID)
+        return true
     }
 
     private static func seamSuppressionReason(for verdict: CompletionSeamGuard.Verdict) -> String {
@@ -1168,6 +1203,8 @@ extension SuggestionCoordinator {
                 logStage("word-completion-fallback", workID: workID, generation: result.generation,
                          message: "Offered a local exact-prefix word ending.", normalizedOutput: fallback)
             } else {
+                // Read before the teardown below: hiding the overlay ends the pressed key's window.
+                let pressIsWaiting = postExhaustionAcceptanceState.hasQueuedAccept
                 let retryFailure: UnusableCompletionRetryPolicy.Failure?
                 if case let .suppress(verdict) = decision {
                     clearSuggestion()
@@ -1190,11 +1227,15 @@ extension SuggestionCoordinator {
                                 context: liveContext)
                     retryFailure = UnusableCompletionRetryPolicy.failure(forSuppressionReason: result.suppressionReason)
                 }
-                retryWithBannedOpening(after: result, failure: retryFailure, workID: workID, liveContext: liveContext)
+                if !retryInsistently(after: result, pressIsWaiting: pressIsWaiting, workID: workID,
+                                     liveContext: liveContext) {
+                    retryWithBannedOpening(after: result, failure: retryFailure, workID: workID, liveContext: liveContext)
+                }
                 return
             }
         }
-        guard !wasDismissed(visibleText, context: liveContext) else {
+        // A pressed accept key asked for this suggestion now, which overrides an earlier dismissal.
+        guard postExhaustionAcceptanceState.hasQueuedAccept || !wasDismissed(visibleText, context: liveContext) else {
             clearSuggestion()
             hideOverlay(reason: "Overlay hidden because this suggestion was explicitly dismissed.")
             state = .idle

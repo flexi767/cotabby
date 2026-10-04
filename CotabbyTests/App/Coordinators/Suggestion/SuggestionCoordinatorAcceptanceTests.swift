@@ -320,6 +320,61 @@ final class SuggestionCoordinatorAcceptanceTests: SuggestionCoordinatorRigTestCa
         XCTAssertFalse(rig.coordinator.postExhaustionAcceptanceState.isArmed)
     }
 
+    func test_pressedAcceptKeyRetriesInsistentlyWhenTheModelReturnsNothing() async {
+        let rig = retained(makeCoordinatorRig(
+            snapshot: CotabbyTestFixtures.focusedInputSnapshot(precedingText: "It happened. ")
+        ))
+        // The model answers "nothing" twice (an immediate end of generation), then a word.
+        var answers = ["", "", " Then"]
+        rig.engine.resultProvider = { request in
+            let text = answers.isEmpty ? "" : answers.removeFirst()
+            return SuggestionResult(generation: request.generation, rawText: text, text: text, latency: 0.01,
+                                    suppressionReason: text.isEmpty ? "emptyGeneration" : nil, firstToken: 7)
+        }
+
+        rig.coordinator.requestSuggestionForIdleAcceptKey()
+
+        await waitUntil("The pressed key never got a word written") { !rig.inserter.insertedChunks.isEmpty }
+        XCTAssertEqual(rig.inserter.insertedChunks.first, "Then")
+        // The first three requests are the press's attempts; anything after is the ordinary
+        // regeneration that follows an accepted word.
+        let attempts = Array(rig.engine.requests.prefix(3))
+        XCTAssertEqual(attempts.count, 3)
+        XCTAssertTrue(attempts.allSatisfy(\.insists), "Every attempt for a pressed key insists")
+        XCTAssertEqual(attempts.dropFirst().map(\.retryBannedSeedToken), [7, 7])
+    }
+
+    func test_insistentRetriesStopAtTheLimit() async {
+        let rig = retained(makeCoordinatorRig(
+            snapshot: CotabbyTestFixtures.focusedInputSnapshot(precedingText: "It happened. ")
+        ))
+        rig.engine.resultProvider = { request in
+            SuggestionResult(generation: request.generation, rawText: "", text: "", latency: 0.01,
+                             suppressionReason: "emptyGeneration", firstToken: 7)
+        }
+
+        rig.coordinator.requestSuggestionForIdleAcceptKey()
+
+        await waitUntil("The attempts never settled") {
+            rig.engine.requests.count == 1 + SuggestionCoordinator.insistentRetryLimit
+                && rig.coordinator.state == .idle
+        }
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(rig.engine.requests.count, 1 + SuggestionCoordinator.insistentRetryLimit)
+        XCTAssertTrue(rig.inserter.insertedChunks.isEmpty)
+    }
+
+    func test_ordinaryRequestsDoNotInsist() async {
+        let rig = retained(makeCoordinatorRig(
+            snapshot: CotabbyTestFixtures.focusedInputSnapshot(precedingText: "Hello ")
+        ))
+
+        rig.coordinator.schedulePrediction()
+
+        await waitUntil("No request was made") { !rig.engine.requests.isEmpty }
+        XCTAssertFalse(rig.engine.requests[0].insists)
+    }
+
     func test_idleCharacterAcceptKeyRequestsNothingWhereCotabbyIsDisabled() {
         let rig = retained(makeCoordinatorRig(
             settingsSnapshot: CotabbyTestFixtures.settingsSnapshot(

@@ -521,6 +521,7 @@ extension SuggestionCoordinator {
         }
         armPostExhaustionAcceptance(windowSeconds: Self.requestedSuggestionAcceptanceWindowSeconds)
         postExhaustionAcceptanceState.queueAcceptIfArmed()
+        insistentRetryCount = 0
         CotabbyLogger.app.info("Accept key pressed with nothing to accept; requesting a suggestion")
         focusModel.refreshNow()
         schedulePrediction()

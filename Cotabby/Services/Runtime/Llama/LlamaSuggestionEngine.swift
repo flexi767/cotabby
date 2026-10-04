@@ -283,9 +283,10 @@ final class LlamaSuggestionEngine {
                 precedingText: request.context.precedingText,
                 trailingText: request.context.trailingText
             ),
-            confidenceFloor: request.confidenceFloorOverride ?? resolvedConfidenceFloor(),
-            sentenceStopMinimumWords: request.wordRange?.lowWords ?? 0,
-            stopAtArgmaxEOG: resolvedStopAtArgmaxEOG(),
+            confidenceFloor: request.insists ? -.infinity
+                : (request.confidenceFloorOverride ?? resolvedConfidenceFloor()),
+            sentenceStopMinimumWords: max(request.wordRange?.lowWords ?? 0, request.insists ? 1 : 0),
+            stopAtArgmaxEOG: request.insists ? false : resolvedStopAtArgmaxEOG(),
             bannedSeedToken: request.retryBannedSeedToken,
             measuresConfidence: request.measuresConfidence
         )
