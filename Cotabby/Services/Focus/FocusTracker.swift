@@ -180,6 +180,14 @@ final class FocusTracker {
         rescheduleTimerIfIntervalChanged()
     }
 
+    /// Resets idle backoff without capturing, so the next capture comes within one base interval.
+    /// The timer is re-armed only when backoff had stretched it, so a click during active use costs
+    /// nothing.
+    func noteUserActivity() {
+        backoff.reset()
+        rescheduleTimerIfIntervalChanged()
+    }
+
     /// Drops resolver caches whose contents Cotabby just made stale by mutating the focused field
     /// itself (the static-run walk after a synthetic insert). The next capture pays fresh walks.
     func invalidateTransientCaretCaches() {

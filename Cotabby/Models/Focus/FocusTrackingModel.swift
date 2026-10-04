@@ -80,6 +80,12 @@ final class FocusTrackingModel: ObservableObject {
         tracker.refreshNow()
     }
 
+    /// Returns polling to its base cadence after a click without capturing now: the host has not
+    /// moved focus yet when the click is seen, so the next regular tick reads the new field.
+    func noteUserActivity() {
+        tracker.noteUserActivity()
+    }
+
     /// Forwards the coordinator's "I just mutated the focused field" hint so resolver caches that
     /// predate the mutation cannot serve stale geometry to the next capture.
     func invalidateTransientCaretCaches() {

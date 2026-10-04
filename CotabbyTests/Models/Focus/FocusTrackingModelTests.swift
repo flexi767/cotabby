@@ -165,6 +165,19 @@ final class FocusTrackingModelTests: XCTestCase {
             XCTAssertEqual(model.latestPollEvent?.sequence, 2)
         }
     }
+
+    /// A click arrives before the host moves focus, so it only resets the cadence; a capture now
+    /// would read the old field and cost an Accessibility walk for nothing.
+    func test_noteUserActivity_doesNotCapture() {
+        runOnMainActor {
+            let model = makeModel(publishesPollingEvents: true)
+            model.start()
+
+            model.noteUserActivity()
+
+            XCTAssertEqual(model.latestPollEvent?.sequence, 1)
+        }
+    }
 }
 
 private func runOnMainActor<Result>(

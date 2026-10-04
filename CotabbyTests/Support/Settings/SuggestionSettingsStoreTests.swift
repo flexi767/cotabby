@@ -132,6 +132,21 @@ final class SuggestionSettingsStoreTests: XCTestCase {
         )
     }
 
+    func test_load_mapsPreviousFocusPollDefaultsToTheShippedDefault() async {
+        for previous in [80, 50] {
+            let defaults = makeIsolatedDefaults()
+            defaults.set(previous, forKey: "cotabbyFocusPollIntervalMilliseconds")
+
+            let data = SuggestionSettingsStore(userDefaults: defaults).load(configuration: .standard)
+
+            XCTAssertEqual(
+                data.focusPollIntervalMilliseconds,
+                SuggestionConfiguration.standard.focusPollIntervalMilliseconds,
+                "persisted \(previous)"
+            )
+        }
+    }
+
     /// Below the shipped default, persisted timings are honored down to a 10 ms floor so a corrupt
     /// value cannot turn debounce or focus polling into a busy loop.
     func test_load_floorsPersistedDebounceAndFocusPollAtTenMilliseconds() async {

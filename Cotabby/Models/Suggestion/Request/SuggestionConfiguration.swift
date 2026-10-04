@@ -167,6 +167,9 @@ struct SuggestionConfiguration: Equatable, Sendable {
         // and a placeholder would sign every user's mail with someone else's name.
         defaultUserName: nil,
         defaultWordCountPreset: .twelveToTwenty,
-        focusPollIntervalMilliseconds: 50
+        // Keystrokes refresh the field on their own (`schedulePredictionAfterHostPublishDelay`), so
+        // the poll only notices clicks, field switches and scrolling. 150 ms is a third of the
+        // Accessibility reads of the former 50 ms, for at most 0.15 s later reaction to those.
+        focusPollIntervalMilliseconds: 150
     )
 }

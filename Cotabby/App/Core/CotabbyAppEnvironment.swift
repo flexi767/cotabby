@@ -80,9 +80,6 @@ final class CotabbyAppEnvironment {
             suppressionController: suppressionController
         )
         let calendarAccessibilityCaptureGuard = CalendarAccessibilityCaptureGuard()
-        inputMonitor.onPointerDown = { [weak calendarAccessibilityCaptureGuard] point in
-            calendarAccessibilityCaptureGuard?.handlePointerDown(atAccessibilityPoint: point)
-        }
         inputMonitor.globalToggleKeyCodeProvider = { suggestionSettings.globalToggleKeyCode }
         inputMonitor.globalToggleKeyModifiersProvider = { suggestionSettings.globalToggleKeyModifiers }
         inputMonitor.onGlobalToggleHotkey = { [weak suggestionSettings] in
@@ -110,6 +107,12 @@ final class CotabbyAppEnvironment {
                 )
             }
         )
+        // A click may move focus to another field, so the poll returns to its base cadence (the
+        // next capture within one interval) instead of an idle-stretched one of up to ten.
+        inputMonitor.onPointerDown = { [weak calendarAccessibilityCaptureGuard, weak focusModel] point in
+            calendarAccessibilityCaptureGuard?.handlePointerDown(atAccessibilityPoint: point)
+            focusModel?.noteUserActivity()
+        }
         // The snapshot is poll-based, so after a fast app switch the closure may briefly
         // evaluate against the previous app's identity until the next AX poll fires. This
         // is the same race the downstream evaluator already has — not a new regression.

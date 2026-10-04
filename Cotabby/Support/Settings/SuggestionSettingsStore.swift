@@ -168,6 +168,9 @@ struct SuggestionSettingsStore {
     private static let legacyResponseLanguageDefaultsKey = "cotabbyResponseLanguage"
     private static let debounceMillisecondsDefaultsKey = "cotabbyDebounceMilliseconds"
     private static let focusPollIntervalMillisecondsDefaultsKey = "cotabbyFocusPollIntervalMilliseconds"
+    /// Focus poll intervals earlier versions persisted as their shipped default. The settings save
+    /// writes the current value back, so these mean "the default then", not a choice.
+    private static let previousFocusPollDefaults: Set<Int> = [80, 50]
     private static let multiLineEnabledDefaultsKey = "cotabbyMultiLineEnabled"
     private static let suggestWithinWordsDefaultsKey = "cotabbySuggestWithinWords"
     private static let showFollowingWordsDefaultsKey = "cotabbyShowFollowingWords"
@@ -461,10 +464,11 @@ struct SuggestionSettingsStore {
             return max(10, min(500, capped))
         }()
         let resolvedFocusPollIntervalMilliseconds: Int = {
-            let raw = userDefaults.object(forKey: Self.focusPollIntervalMillisecondsDefaultsKey) as? Int
+            let persisted = userDefaults.object(forKey: Self.focusPollIntervalMillisecondsDefaultsKey) as? Int
+            let raw = persisted.flatMap { Self.previousFocusPollDefaults.contains($0) ? nil : $0 }
                 ?? configuration.focusPollIntervalMilliseconds
             // Cap persisted values at the shipped default so a default lowering reaches existing
-            // installs (anyone on the previous 80ms default gets the 50ms speedup on next launch).
+            // installs, and map earlier defaults (80, then 50) to today's so a raise does too.
             // The stepper is hidden from the UI today, so any persisted value is a previous default
             // rather than a user-chosen override.
             let capped = min(raw, configuration.focusPollIntervalMilliseconds)
