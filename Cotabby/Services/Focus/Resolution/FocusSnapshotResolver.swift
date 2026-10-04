@@ -48,6 +48,8 @@ struct FocusSnapshotResolver {
     /// The other offer field's value, read once per focus session: it cannot change while focus
     /// stays in this field, and the read is a bounded tree search we do not want on every poll.
     private let formCounterpartCache = FocusSessionScopedCache<FormCounterpartReading?>()
+    /// Attribute-name lists per element, re-read at most every couple of seconds (see the type).
+    private let attributeNameCache = AXAttributeNameCache()
     /// The text margin the caret's paragraph wraps to, which a field's `AXFrame` does not reveal
     /// (Word's frame is the page edge, not the text margin). Up to three AX round trips, so each
     /// result is cached per focus session *and* per paragraph: the margin changes between an indented
@@ -788,7 +790,7 @@ struct FocusSnapshotResolver {
         if AXHelper.isKnownReadOnlyRole(role) {
             return false
         }
-        let attributes = Set(AXHelper.attributeNames(on: element))
+        let attributes = attributeNameCache.names(for: element).attributes
         if attributes.contains("AXSelectedTextMarkerRange")
             || attributes.contains(kAXSelectedTextRangeAttribute as String) {
             return true
@@ -855,8 +857,9 @@ struct FocusSnapshotResolver {
             if let range = AXHelper.rangeValue(
                 for: kAXSelectedTextRangeAttribute as CFString, on: element
             ), range.length == 0 {
-                let paramAttrs = Set(AXHelper.parameterizedAttributeNames(on: element))
-                let attrs = Set(AXHelper.attributeNames(on: element))
+                let names = attributeNameCache.names(for: element)
+                let paramAttrs = names.parameterized
+                let attrs = names.attributes
                 let textValue =
                     attrs.contains(kAXValueAttribute as String)
                     ? AXHelper.stringValue(for: kAXValueAttribute as CFString, on: element)
@@ -944,9 +947,9 @@ struct FocusSnapshotResolver {
             role = AXHelper.stringValue(for: kAXRoleAttribute as CFString, on: element) ?? "Unknown"
             subrole = AXHelper.stringValue(for: kAXSubroleAttribute as CFString, on: element)
         }
-        let supportedAttributes = Set(AXHelper.attributeNames(on: element))
-        let supportedParameterizedAttributes = Set(
-            AXHelper.parameterizedAttributeNames(on: element))
+        let names = attributeNameCache.names(for: element)
+        let supportedAttributes = names.attributes
+        let supportedParameterizedAttributes = names.parameterized
         let explicitEditableFlag =
             supportedAttributes.contains("AXEditable")
             ? AXHelper.boolValue(for: "AXEditable" as CFString, on: element)
