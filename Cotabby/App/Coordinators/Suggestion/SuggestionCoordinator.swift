@@ -313,6 +313,10 @@ final class SuggestionCoordinator: ObservableObject {
             self?.handleInputEvent(event) ?? false
         }
 
+        inputMonitor.onIdleAcceptKey = { [weak self] in
+            self?.requestSuggestionForIdleAcceptKey()
+        }
+
         inputMonitor.onSuppressedSyntheticInput = { [weak self] in
             self?.handleSuppressedSyntheticInput()
         }

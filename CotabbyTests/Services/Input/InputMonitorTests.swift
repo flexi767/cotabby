@@ -186,6 +186,72 @@ final class InputMonitorTests: XCTestCase {
         }
     }
 
+    // MARK: - Character accept key (the key above Tab)
+
+    private static let isoSection: CGKeyCode = 10
+
+    /// A monitor that owns the character accept key. Permission is off so no real event tap is
+    /// installed; `handleAcceptKeyDown` is the decision under test.
+    private func makeCharacterKeyMonitor(binding: CGKeyCode = isoSection) -> (InputMonitor, () -> Int) {
+        let monitor = InputMonitor(permissionProvider: { false }, suppressionController: InputSuppressionController())
+        Self.retainedMonitors.append(monitor)
+        monitor.acceptanceBindingProvider = { (binding, []) }
+        monitor.ownsCharacterAcceptKey = true
+        var idlePresses = 0
+        monitor.onIdleAcceptKey = { idlePresses += 1 }
+        return (monitor, { idlePresses })
+    }
+
+    func test_characterAcceptKeyWithNothingVisibleIsConsumedAndRequestsASuggestion() {
+        let (monitor, idlePresses) = makeCharacterKeyMonitor()
+        monitor.shouldConsumeAcceptKeyProvider = { false }
+        let delivered = recordKinds(on: monitor, accepts: true)
+
+        XCTAssertEqual(monitor.handleAcceptKeyDown(InputMonitorKeyEvent(keyCode: Self.isoSection)), .consume)
+        XCTAssertEqual(idlePresses(), 1)
+        XCTAssertTrue(delivered().isEmpty, "Nothing visible: the coordinator's accept path is not asked")
+    }
+
+    func test_characterAcceptKeyThatCannotAcceptIsConsumedAndRequestsASuggestion() {
+        let (monitor, idlePresses) = makeCharacterKeyMonitor()
+        monitor.shouldConsumeAcceptKeyProvider = { true }
+        let delivered = recordKinds(on: monitor, accepts: false)
+
+        XCTAssertEqual(monitor.handleAcceptKeyDown(InputMonitorKeyEvent(keyCode: Self.isoSection)), .consume)
+        XCTAssertEqual(delivered(), [.acceptance])
+        XCTAssertEqual(idlePresses(), 1)
+    }
+
+    func test_characterAcceptKeyThatAcceptsDoesNotRequestAnotherSuggestion() {
+        let (monitor, idlePresses) = makeCharacterKeyMonitor()
+        monitor.shouldConsumeAcceptKeyProvider = { true }
+        _ = recordKinds(on: monitor, accepts: true)
+
+        XCTAssertEqual(monitor.handleAcceptKeyDown(InputMonitorKeyEvent(keyCode: Self.isoSection)), .consume)
+        XCTAssertEqual(idlePresses(), 0)
+    }
+
+    func test_tabAcceptKeyKeepsPassingThroughWhenNothingIsVisible() {
+        let (monitor, idlePresses) = makeCharacterKeyMonitor(binding: Self.tab)
+        monitor.shouldConsumeAcceptKeyProvider = { false }
+
+        XCTAssertEqual(monitor.handleAcceptKeyDown(InputMonitorKeyEvent(keyCode: Self.tab)), .passThrough)
+        XCTAssertEqual(idlePresses(), 0)
+    }
+
+    func test_characterAcceptKeyPassesThroughWhenNotOwnedOrNotProcessing() {
+        let (notOwned, notOwnedPresses) = makeCharacterKeyMonitor()
+        notOwned.ownsCharacterAcceptKey = false
+        XCTAssertEqual(notOwned.handleAcceptKeyDown(InputMonitorKeyEvent(keyCode: Self.isoSection)), .passThrough)
+        XCTAssertEqual(notOwnedPresses(), 0)
+
+        // Cotabby off, paused, or in a terminal / disabled app: the key types as usual.
+        let (inactive, inactivePresses) = makeCharacterKeyMonitor()
+        inactive.shouldProcessEventsProvider = { false }
+        XCTAssertEqual(inactive.handleAcceptKeyDown(InputMonitorKeyEvent(keyCode: Self.isoSection)), .passThrough)
+        XCTAssertEqual(inactivePresses(), 0)
+    }
+
     func test_acceptTapLeavesNonAcceptKeysUnhandled() {
         let monitor = makeMonitor()
         monitor.shouldConsumeAcceptKeyProvider = { true }

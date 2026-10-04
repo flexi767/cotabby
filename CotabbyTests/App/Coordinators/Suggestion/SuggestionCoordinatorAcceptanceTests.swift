@@ -305,6 +305,34 @@ final class SuggestionCoordinatorAcceptanceTests: SuggestionCoordinatorRigTestCa
         XCTAssertTrue(rig.coordinator.postExhaustionAcceptanceState.hasQueuedAccept)
     }
 
+    func test_idleCharacterAcceptKeyRequestsASuggestionAndWritesItsFirstWord() async {
+        let rig = retained(makeCoordinatorRig(
+            snapshot: CotabbyTestFixtures.focusedInputSnapshot(precedingText: "Hello ")
+        ))
+
+        // The key above Tab with nothing on screen: no "^" in the field, a suggestion instead.
+        rig.coordinator.requestSuggestionForIdleAcceptKey()
+        XCTAssertTrue(rig.coordinator.postExhaustionAcceptanceState.hasQueuedAccept)
+        XCTAssertTrue(rig.inputMonitor.shouldConsumeAcceptKeyProvider(), "A second press is held, not typed")
+
+        await waitUntil("The requested suggestion was never written") { !rig.inserter.insertedChunks.isEmpty }
+        XCTAssertEqual(rig.inserter.insertedChunks.first, "world")
+        XCTAssertFalse(rig.coordinator.postExhaustionAcceptanceState.isArmed)
+    }
+
+    func test_idleCharacterAcceptKeyRequestsNothingWhereCotabbyIsDisabled() {
+        let rig = retained(makeCoordinatorRig(
+            settingsSnapshot: CotabbyTestFixtures.settingsSnapshot(
+                disabledAppBundleIdentifiers: ["com.example.TestApp"]
+            )
+        ))
+
+        rig.coordinator.requestSuggestionForIdleAcceptKey()
+
+        XCTAssertFalse(rig.coordinator.postExhaustionAcceptanceState.isArmed)
+        XCTAssertTrue(rig.engine.requests.isEmpty)
+    }
+
     func test_postExhaustionWindowReleasesAcceptKeyWhenOverlayHides() {
         let rig = retained(makeCoordinatorRig(snapshot: finalChunkSnapshot))
         startVisibleSession(in: rig, fullText: " today")

@@ -84,6 +84,7 @@ final class RigFocusProvider: SuggestionFocusProviding {
 final class RigInputMonitor: SuggestionInputMonitoring {
     var onEvent: ((CapturedInputEvent) -> Bool)?
     var onSuppressedSyntheticInput: (() -> Void)?
+    var onIdleAcceptKey: (@MainActor () -> Void)?
     var shouldConsumeAcceptKeyProvider: @MainActor @Sendable () -> Bool = { false }
     private(set) var acceptInterceptionRequests: [Bool] = []
 

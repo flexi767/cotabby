@@ -71,6 +71,9 @@ extension SuggestionFocusProviding {
 protocol SuggestionInputMonitoring: AnyObject {
     var onEvent: ((CapturedInputEvent) -> Bool)? { get set }
     var onSuppressedSyntheticInput: (() -> Void)? { get set }
+    /// The character accept key (the key above Tab) was pressed with nothing to accept; the key was
+    /// consumed instead of typing, and the coordinator should produce a suggestion.
+    var onIdleAcceptKey: (@MainActor () -> Void)? { get set }
 
     /// Fail-open preflight for the active accept tap. The tap only routes a matching key into the
     /// coordinator when this closure returns `true` at event time. The coordinator still performs

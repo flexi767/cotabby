@@ -138,6 +138,12 @@ final class CotabbyAppEnvironment {
             )
             return (binding.keyCode, binding.modifiers)
         }
+        // The key above Tab never types its character ("^" on a German layout) while Cotabby is
+        // active: with nothing on screen it asks for a suggestion instead. Only that key is
+        // affected (Tab and modified bindings keep their meaning); `false` restores the old
+        // pass-through behaviour.
+        inputMonitor.ownsCharacterAcceptKey =
+            UserDefaults.standard.object(forKey: "cotabbyCharacterAcceptKeyNeverTypes") as? Bool ?? true
         inputMonitor.fullAcceptanceBindingProvider = { [weak focusModel] in
             let binding = suggestionSettings.resolvedFullAcceptBinding(
                 forBundleIdentifier: focusModel?.snapshot.bundleIdentifier

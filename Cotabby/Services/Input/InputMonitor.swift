@@ -96,6 +96,24 @@ final class InputMonitor {
     /// preflight keeps stale or misinstalled taps from even attempting acceptance.
     var shouldConsumeAcceptKeyProvider: @MainActor @Sendable () -> Bool = { false }
 
+    /// When true, an accept key that would otherwise type a character (the key above Tab, which
+    /// types "^" on a German layout and "§" or "`" elsewhere) never reaches the focused app while
+    /// Cotabby is active there: with ghost text it accepts, without it the press asks for a
+    /// suggestion (`onIdleAcceptKey`) instead of typing. The accept tap then stays installed while
+    /// Cotabby runs, so this costs the always-on tap the global-toggle hotkey already pays. Tab and
+    /// modified bindings are never affected: they keep their normal meaning when nothing is shown.
+    var ownsCharacterAcceptKey = false {
+        didSet { updateAcceptTapState() }
+    }
+
+    /// Called for a press of the character accept key (see `ownsCharacterAcceptKey`) that did not
+    /// accept anything. The key itself is consumed.
+    var onIdleAcceptKey: (@MainActor () -> Void)?
+
+    /// Key codes of the key left of "1" (above Tab): `kVK_ISO_Section` on ISO keyboards and
+    /// `kVK_ANSI_Grave` on ANSI ones. Both type a character nobody needs in place of a suggestion.
+    static let characterAcceptKeyCodes: Set<CGKeyCode> = [10, 50]
+
     private let permissionProvider: @MainActor () -> Bool
     private let suppressionController: InputSuppressionController
 
@@ -158,6 +176,7 @@ final class InputMonitor {
         if permissionProvider() {
             installObserverTapIfNeeded()
             refreshToggleTap()
+            updateAcceptTapState()
         } else {
             destroyAcceptTap()
             destroyToggleTap()
@@ -213,7 +232,8 @@ final class InputMonitor {
     /// When the tap exists solely for emoji capture, the observer must keep routing the accept key
     /// (Tab) to the coordinator so the emoji controller — not the suggestion accept path — acts on it.
     private func updateAcceptTapState() {
-        let wantsTap = permissionProvider() && (suggestionInterceptionActive || captureInterceptionActive)
+        let wantsTap = permissionProvider()
+            && (suggestionInterceptionActive || captureInterceptionActive || ownsCharacterAcceptKey)
         // Only a visible suggestion claims the accept key at the observer layer. When the tap exists
         // solely for emoji capture, the observer must keep routing the accept key (Tab) to the
         // coordinator so the emoji controller — not the suggestion accept path — acts on it. Setting
@@ -230,7 +250,8 @@ final class InputMonitor {
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.acceptTapTeardownDelaySeconds) { [weak self] in
                 guard let self else { return }
                 let stillWanted = self.permissionProvider()
-                    && (self.suggestionInterceptionActive || self.captureInterceptionActive)
+                    && (self.suggestionInterceptionActive || self.captureInterceptionActive
+                        || self.ownsCharacterAcceptKey)
                 guard !stillWanted else { return }
                 self.destroyAcceptTap()
             }
@@ -606,7 +627,12 @@ final class InputMonitor {
         // Fail open. A stale accept tap with no visible suggestion should never steal the user's
         // key. When a visible overlay exists, the coordinator remains the final validator and can
         // clean up stale UI before this method passes the original key through.
+        let ownsKeyWhenIdle = ownsCharacterAcceptKey && isCharacterAcceptKey(keyEvent)
         guard shouldConsumeAcceptKeyProvider() else {
+            if ownsKeyWhenIdle {
+                onIdleAcceptKey?()
+                return .consume
+            }
             // Warning, not debug: a declined accept key reaches the focused app as a typed character
             // (the key above Tab types "^" on a German layout), so every one is worth a persisted
             // line saying why. Never carries text, only the bound key's code.
@@ -628,6 +654,12 @@ final class InputMonitor {
             flags: keyEvent.flags
         )
         guard onEvent(capturedEvent) else {
+            if ownsKeyWhenIdle {
+                // The visible suggestion could not be accepted (it no longer matched the field);
+                // ask for a fresh one rather than typing the key's character into the field.
+                onIdleAcceptKey?()
+                return .consume
+            }
             CotabbyLogger.app.debug(
                 "Accept tap passed keyCode=\(keyEvent.keyCode) through because coordinator declined acceptance"
             )
@@ -649,7 +681,9 @@ final class InputMonitor {
         // would freeze the emoji controller out of its own commit key and route Tab to the suggestion
         // accept path instead. Excluding capture from acceptance recognition keeps the emoji picker's
         // "first look at every keystroke" invariant intact even when a suggestion overlay is showing.
-        let recognizesAcceptance = isAcceptTapOwningAcceptKeys && !captureInterceptionActive
+        let recognizesAcceptance = (isAcceptTapOwningAcceptKeys
+            || (ownsCharacterAcceptKey && acceptTap != nil && isCharacterAcceptKey(keyEvent)))
+            && !captureInterceptionActive
         let capturedEvent = classify(keyEvent: keyEvent, recognizesAcceptance: recognizesAcceptance)
         // Trace-level so it is free at the default floor; under `-cotabby-debug` every observed key
         // lands in the JSONL stream, which is how a "why did the ghost vanish" report gets answered.
@@ -733,6 +767,14 @@ final class InputMonitor {
     /// its commit stays consistent with accepting a suggestion word instead of hardcoding Tab/Return.
     func isWordAcceptKey(_ keyEvent: InputMonitorKeyEvent) -> Bool {
         acceptanceKind(for: keyEvent) == .acceptance
+    }
+
+    /// Whether `keyEvent` is a bound accept key that would type a character: the key above Tab with
+    /// no modifiers.
+    func isCharacterAcceptKey(_ keyEvent: InputMonitorKeyEvent) -> Bool {
+        Self.characterAcceptKeyCodes.contains(keyEvent.keyCode)
+            && ShortcutModifierMask(eventFlags: keyEvent.flags).isEmpty
+            && acceptanceKind(for: keyEvent) != nil
     }
 
     private func acceptanceKind(for keyEvent: InputMonitorKeyEvent) -> CapturedInputEvent.Kind? {

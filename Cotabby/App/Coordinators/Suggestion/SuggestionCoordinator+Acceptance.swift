@@ -504,6 +504,28 @@ extension SuggestionCoordinator {
     /// generation.
     static let postExhaustionAcceptanceWindowSeconds: TimeInterval = 0.8
 
+    /// How long a press of the character accept key with nothing on screen waits for the suggestion
+    /// it asked for (debounce plus an on-device generation, with room for a slow one). If nothing
+    /// arrives the press simply did nothing.
+    static let requestedSuggestionAcceptanceWindowSeconds: TimeInterval = 2.5
+
+    /// The character accept key (the key above Tab) was pressed with nothing to accept. Instead of
+    /// letting it type "^" into the field, ask for a suggestion now and write its first word as soon
+    /// as it appears, through the same one-queued-accept window that holds a rapid Tab across a
+    /// regeneration. Typing, moving the caret, or switching fields in the meantime releases the
+    /// window, so it never accepts text for a field the writer has already left.
+    func requestSuggestionForIdleAcceptKey() {
+        if let disabledReason = currentDisabledReason(focusSnapshot: focusModel.snapshot) {
+            CotabbyLogger.app.info("Accept key pressed with nothing to accept; not requesting: \(disabledReason)")
+            return
+        }
+        armPostExhaustionAcceptance(windowSeconds: Self.requestedSuggestionAcceptanceWindowSeconds)
+        postExhaustionAcceptanceState.queueAcceptIfArmed()
+        CotabbyLogger.app.info("Accept key pressed with nothing to accept; requesting a suggestion")
+        focusModel.refreshNow()
+        schedulePrediction()
+    }
+
     /// Keeps the accept tap owning Tab for a brief window after a final-chunk accept, while the
     /// continuation regenerates asynchronously.
     ///
@@ -517,11 +539,11 @@ extension SuggestionCoordinator {
     /// regen window (its mach port otherwise lingers only ~50ms), and `shouldConsumeAcceptKeyProvider`
     /// also consults the extracted state so the key is still routed in while the overlay is hidden.
     /// A token-keyed backstop guarantees the window can never trap Tab.
-    func armPostExhaustionAcceptance() {
+    func armPostExhaustionAcceptance(windowSeconds: TimeInterval = postExhaustionAcceptanceWindowSeconds) {
         let generation = postExhaustionAcceptanceState.arm()
         inputMonitor.setAcceptInterceptionActive(true)
         DispatchQueue.main.asyncAfter(
-            deadline: .now() + Self.postExhaustionAcceptanceWindowSeconds
+            deadline: .now() + windowSeconds
         ) { [weak self] in
             // Only the generation that scheduled this timer may act on it; a newer accept (or an
             // already-released window) bumped the token, so this fires as a no-op.
