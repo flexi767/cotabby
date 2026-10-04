@@ -120,6 +120,79 @@ final class ScreenshotContextGeneratorTests: XCTestCase {
         XCTAssertEqual(first.text, second.text, "A cache hit must produce the same excerpt as a fresh OCR.")
     }
 
+    // MARK: - Focused field exclusion
+
+    /// The lower half of a 4x4 image is the "field" (Vision coordinates, origin bottom left).
+    private static let lowerHalf = CGRect(x: 0, y: 0, width: 1, height: 0.5)
+
+    private func makeImage(gray: CGFloat, fieldGray: CGFloat) -> CGImage {
+        let context = CGContext(
+            data: nil, width: 4, height: 4, bitsPerComponent: 8, bytesPerRow: 16,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        context.setFillColor(CGColor(gray: gray, alpha: 1))
+        context.fill(CGRect(x: 0, y: 2, width: 4, height: 2))
+        // CGContext draws with a bottom-left origin, so y 0..<2 is the lower half of the image.
+        context.setFillColor(CGColor(gray: fieldGray, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 4, height: 2))
+        return context.makeImage()!
+    }
+
+    func test_pixelHashIgnoresOnlyTheExcludedField() {
+        let base = makeImage(gray: 1, fieldGray: 0.2)
+        let typedInField = makeImage(gray: 1, fieldGray: 0.7)
+        let changedOutside = makeImage(gray: 0.5, fieldGray: 0.2)
+
+        XCTAssertEqual(
+            ScreenshotContextGenerator.pixelHash(of: base, excluding: Self.lowerHalf),
+            ScreenshotContextGenerator.pixelHash(of: typedInField, excluding: Self.lowerHalf)
+        )
+        XCTAssertNotEqual(
+            ScreenshotContextGenerator.pixelHash(of: base, excluding: Self.lowerHalf),
+            ScreenshotContextGenerator.pixelHash(of: changedOutside, excluding: Self.lowerHalf)
+        )
+        XCTAssertNotEqual(
+            ScreenshotContextGenerator.pixelHash(of: base),
+            ScreenshotContextGenerator.pixelHash(of: typedInField),
+            "Without a field every pixel still counts"
+        )
+    }
+
+    func test_typingInTheFieldReusesTheExtraction() async throws {
+        let extractor = CountingTextExtractor(extracted: extracted(text: Self.meaningfulLine))
+        let capture = RecordingScreenshotCapture(image: makeImage(gray: 1, fieldGray: 0.2))
+        capture.fieldBounds = Self.lowerHalf
+        let generator = ScreenshotContextGenerator(screenshotService: capture, textExtractor: extractor, configuration: .default)
+
+        _ = try await generator.generateContext(for: makeSnapshot())
+        capture.image = makeImage(gray: 1, fieldGray: 0.7)
+        _ = try await generator.generateContext(for: makeSnapshot())
+
+        XCTAssertEqual(extractor.extractionCount, 1, "Only the field changed: no new Vision pass")
+    }
+
+    func test_ocrLinesInsideTheFieldAreDropped() {
+        let inField = OCRTextHygiene.OCRLine(text: "my half-typed draft", confidence: 1,
+                                             boundingBox: CGRect(x: 0.1, y: 0.1, width: 0.5, height: 0.1))
+        let above = OCRTextHygiene.OCRLine(text: "a message above", confidence: 1,
+                                           boundingBox: CGRect(x: 0.1, y: 0.7, width: 0.5, height: 0.1))
+        let noBox = OCRTextHygiene.OCRLine(text: "no geometry", confidence: 1)
+
+        XCTAssertEqual(ScreenshotContextGenerator.lines([inField, above, noBox], outside: Self.lowerHalf), [above, noBox])
+        XCTAssertEqual(ScreenshotContextGenerator.lines([inField, above], outside: nil), [inField, above])
+    }
+
+    func test_onlyASmallFieldIsExcluded() {
+        let window = CGRect(x: 100, y: 100, width: 1000, height: 800)
+        let composer = CGRect(x: 200, y: 750, width: 600, height: 80)
+        let documentEditor = CGRect(x: 100, y: 150, width: 1000, height: 700)
+
+        let bounds = WindowScreenshotService.excludedFieldBounds(field: composer, sourceRect: window)
+        XCTAssertNotNil(bounds)
+        XCTAssertEqual(bounds?.minY ?? -1, 1 - (834.0 - 100) / 800, accuracy: 0.001, "Vision y runs bottom-up")
+        XCTAssertNil(WindowScreenshotService.excludedFieldBounds(field: documentEditor, sourceRect: window))
+    }
+
     func test_generateContext_cacheHoldsTheFourMostRecentCrops() async throws {
         let extractor = CountingTextExtractor(extracted: extracted(text: Self.meaningfulLine))
         let capture = RecordingScreenshotCapture(image: makeImage())
@@ -320,6 +393,7 @@ final class ScreenshotContextGeneratorTests: XCTestCase {
 private final class RecordingScreenshotCapture: WindowScreenshotCapturing {
     var image: CGImage
     let windowTitle: String?
+    var fieldBounds: CGRect?
     var error: Error?
     private(set) var fullWindowRequests: [Bool] = []
 
@@ -337,7 +411,7 @@ private final class RecordingScreenshotCapture: WindowScreenshotCapturing {
         if let error {
             throw error
         }
-        return CapturedWindowScreenshot(image: image, windowTitle: windowTitle)
+        return CapturedWindowScreenshot(image: image, windowTitle: windowTitle, fieldBounds: fieldBounds)
     }
 }
 

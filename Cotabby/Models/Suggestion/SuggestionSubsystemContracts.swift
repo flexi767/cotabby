@@ -293,9 +293,13 @@ protocol VisualContextCoordinating: AnyObject {
     func startSessionIfNeeded(for snapshotContext: FocusedInputSnapshot, configuration: VisualContextConfiguration)
     func cancel(resetState: Bool)
     func excerpt(for context: FocusedInputContext) -> String?
+    /// The writer typed or clicked; capture work that paused while they were idle may resume.
+    func noteUserActivity()
 }
 
 extension VisualContextCoordinating {
+    func noteUserActivity() {}
+
     func startSessionIfNeeded(for snapshotContext: FocusedInputSnapshot) {
         startSessionIfNeeded(for: snapshotContext, configuration: .default)
     }

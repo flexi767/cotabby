@@ -16,6 +16,12 @@ struct CapturedWindowScreenshot {
     let image: CGImage
     let windowTitle: String?
     var focusBounds: CGRect?
+    /// The focused field itself, in Vision coordinates (unit square, origin bottom left), when it is
+    /// a small part of the capture. Its pixels change with every keystroke and caret blink, and its
+    /// text is the writer's own draft (already known from Accessibility), so the extraction cache
+    /// ignores it and its OCR lines are dropped. Nil for a field that fills most of the window
+    /// (a document editor), where the field is the context and nothing is excluded.
+    var fieldBounds: CGRect? = nil
 }
 
 /// Test seam for screen capture.
@@ -135,7 +141,12 @@ struct WindowScreenshotService: WindowScreenshotCapturing {
             width: field.width / sourceRect.width,
             height: caret.height / sourceRect.height
         )
-        return CapturedWindowScreenshot(image: image, windowTitle: matchingWindow.title, focusBounds: focusBounds)
+        return CapturedWindowScreenshot(
+            image: image,
+            windowTitle: matchingWindow.title,
+            focusBounds: focusBounds,
+            fieldBounds: context.inputFrameRect == nil ? nil : Self.excludedFieldBounds(field: field, sourceRect: sourceRect)
+        )
     }
 
     private func snapshotRect(
@@ -177,6 +188,25 @@ struct WindowScreenshotService: WindowScreenshotCapturing {
             width: targetWidth,
             height: targetHeight
         ).integral
+    }
+
+    /// Fields covering more than this share of the capture are treated as the content itself.
+    static let maximumExcludedFieldAreaFraction: CGFloat = 0.4
+
+    /// The field in Vision coordinates, padded by a few points so the caret and focus ring are
+    /// inside it, or nil when it is too large to exclude or falls outside the capture.
+    static func excludedFieldBounds(field: CGRect, sourceRect: CGRect) -> CGRect? {
+        guard sourceRect.width > 0, sourceRect.height > 0, !field.isNull, !field.isEmpty else { return nil }
+        let padded = field.insetBy(dx: -4, dy: -4).intersection(sourceRect)
+        guard !padded.isNull, !padded.isEmpty,
+              padded.width * padded.height <= sourceRect.width * sourceRect.height * maximumExcludedFieldAreaFraction
+        else { return nil }
+        return CGRect(
+            x: (padded.minX - sourceRect.minX) / sourceRect.width,
+            y: 1 - (padded.maxY - sourceRect.minY) / sourceRect.height,
+            width: padded.width / sourceRect.width,
+            height: padded.height / sourceRect.height
+        )
     }
 
     private func backingScaleFactor(for rect: CGRect) -> CGFloat {

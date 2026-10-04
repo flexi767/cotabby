@@ -49,28 +49,6 @@ enum ScreenTextExtractionError: LocalizedError {
     }
 }
 
-/// Guards the callback-to-async bridge for a single OCR request.
-///
-/// Vision can report a request failure through `VNRecognizeTextRequest`'s completion handler and
-/// then rethrow that same failure from `VNImageRequestHandler.perform(_:)`. Swift checked
-/// continuations must resume exactly once, so both paths share this short-lived gate.
-private final class OCRContinuationResumer {
-    private let lock = NSLock()
-    private var hasResumed = false
-
-    func resume(_ action: () -> Void) {
-        lock.lock()
-        let shouldResume = !hasResumed
-        if shouldResume {
-            hasResumed = true
-        }
-        lock.unlock()
-
-        guard shouldResume else { return }
-        action()
-    }
-}
-
 struct ScreenTextExtractor: ScreenTextExtracting {
     /// Vision cannot produce useful text from near-zero-sized request images. Treating those as
     /// empty OCR keeps degenerate screenshots on the same unavailable-context path as blank windows.
@@ -112,94 +90,83 @@ struct ScreenTextExtractor: ScreenTextExtracting {
         }
 
         return try await withCheckedThrowingContinuation { continuation in
-            let resumer = OCRContinuationResumer()
-
-            DispatchQueue.global(qos: .userInitiated).async {
-                let request = VNRecognizeTextRequest { request, error in
-                    if let error {
-                        resumer.resume {
-                            let elapsedMilliseconds = Int(Date().timeIntervalSince(startedAt) * 1000)
-                            self.log("ocr-failed elapsed_ms=\(elapsedMilliseconds) reason=\(error.localizedDescription)")
-                            continuation.resume(
-                                throwing: ScreenTextExtractionError.ocrFailed(error.localizedDescription)
-                            )
-                        }
-                        return
-                    }
-
-                    let observations = (request.results as? [VNRecognizedTextObservation]) ?? []
-                    // Keep each line's confidence (from its top candidate) so the hygiene pass can drop
-                    // the recognizer's weakest guesses; the joined `text` below is for logging and the
-                    // window-title fallback only.
-                    let recognizedLines: [OCRTextHygiene.OCRLine] = observations
-                        .sorted {
-                            if Swift.abs($0.boundingBox.minY - $1.boundingBox.minY) > 0.02 {
-                                return $0.boundingBox.minY > $1.boundingBox.minY
-                            }
-
-                            return $0.boundingBox.minX < $1.boundingBox.minX
-                        }
-                        .compactMap { observation -> OCRTextHygiene.OCRLine? in
-                            guard let candidate = observation.topCandidates(1).first else { return nil }
-                            let trimmed = candidate.string.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !trimmed.isEmpty else { return nil }
-                            return OCRTextHygiene.OCRLine(
-                                text: trimmed, confidence: candidate.confidence, boundingBox: observation.boundingBox
-                            )
-                        }
-
-                    let joinedText = recognizedLines.map(\.text).joined(separator: "\n")
-                    let cappedText = String(joinedText.prefix(maxRecognizedCharacters))
-
-                    guard !cappedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                        resumer.resume {
-                            let elapsedMilliseconds = Int(Date().timeIntervalSince(startedAt) * 1000)
+            // One recognizer for the app's lifetime, used from one serial queue. A fresh
+            // `VNRecognizeTextRequest` per screenshot made Vision rebuild its Neural Engine program
+            // and leave image buffers and CoreImage contexts behind on every refresh (measured:
+            // about 330 MB of VisionCore allocations within minutes). The autorelease pool drains
+            // each run's temporaries before the next one, which GCD's shared queues do not promise.
+            Self.recognitionQueue.async {
+                autoreleasepool {
+                    let result = Self.recognize(preparedImage)
+                    let elapsedMilliseconds = Int(Date().timeIntervalSince(startedAt) * 1000)
+                    switch result {
+                    case let .failure(error):
+                        self.log("ocr-failed elapsed_ms=\(elapsedMilliseconds) reason=\(error.localizedDescription)")
+                        continuation.resume(throwing: ScreenTextExtractionError.ocrFailed(error.localizedDescription))
+                    case let .success(recognizedLines):
+                        let joinedText = recognizedLines.map(\.text).joined(separator: "\n")
+                        let cappedText = String(joinedText.prefix(maxRecognizedCharacters))
+                        guard !cappedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                             self.log("ocr-empty elapsed_ms=\(elapsedMilliseconds) lines=\(recognizedLines.count)")
                             continuation.resume(throwing: ScreenTextExtractionError.noRecognizedText)
+                            return
                         }
-                        return
-                    }
-
-                    resumer.resume {
-                        let elapsedMilliseconds = Int(Date().timeIntervalSince(startedAt) * 1000)
                         self.log(
-                            "ocr-success elapsed_ms=\(elapsedMilliseconds) lines=\(recognizedLines.count) chars=\(cappedText.count) " +
-                                "preview=\(self.preview(cappedText))"
+                            "ocr-success elapsed_ms=\(elapsedMilliseconds) lines=\(recognizedLines.count) " +
+                                "chars=\(cappedText.count) preview=\(self.preview(cappedText))"
                         )
-
-                        continuation.resume(
-                            returning: ExtractedScreenText(
-                                text: cappedText,
-                                lineCount: recognizedLines.count,
-                                lines: recognizedLines
-                            )
-                        )
-                    }
-                }
-
-                // Accurate OCR is slower, but visual context refresh is throttled independently
-                // of typing and the result can materially improve autocomplete relevance. Language
-                // correction is on for the same reason: it cuts garbled recognitions at the
-                // source, which matters because this text conditions the prompt and the
-                // downstream hygiene filters can only drop junk, not repair it.
-                request.recognitionLevel = .accurate
-                request.usesLanguageCorrection = true
-                request.minimumTextHeight = 0.008
-
-                do {
-                    let handler = VNImageRequestHandler(cgImage: preparedImage, options: [:])
-                    try handler.perform([request])
-                } catch {
-                    resumer.resume {
-                        let elapsedMilliseconds = Int(Date().timeIntervalSince(startedAt) * 1000)
-                        self.log("ocr-failed elapsed_ms=\(elapsedMilliseconds) reason=\(error.localizedDescription)")
-                        continuation.resume(
-                            throwing: ScreenTextExtractionError.ocrFailed(error.localizedDescription)
-                        )
+                        continuation.resume(returning: ExtractedScreenText(
+                            text: cappedText,
+                            lineCount: recognizedLines.count,
+                            lines: recognizedLines
+                        ))
                     }
                 }
             }
         }
+    }
+
+    /// Serial: the shared request below is not safe to perform concurrently.
+    private static let recognitionQueue = DispatchQueue(label: "com.cotabby.ocr", qos: .userInitiated)
+
+    /// Accurate OCR is slower, but visual context refresh is throttled independently of typing and
+    /// the result can materially improve autocomplete relevance. Language correction is on for the
+    /// same reason: it cuts garbled recognitions at the source, which matters because this text
+    /// conditions the prompt and the downstream hygiene filters can only drop junk, not repair it.
+    /// Only touched on `recognitionQueue`.
+    nonisolated(unsafe) private static let sharedRequest: VNRecognizeTextRequest = {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = true
+        request.minimumTextHeight = 0.008
+        return request
+    }()
+
+    /// Runs the shared request on `image`. Call only on `recognitionQueue`.
+    private static func recognize(_ image: CGImage) -> Result<[OCRTextHygiene.OCRLine], Error> {
+        do {
+            let handler = VNImageRequestHandler(cgImage: image, options: [:])
+            try handler.perform([sharedRequest])
+        } catch {
+            return .failure(error)
+        }
+        let observations = sharedRequest.results ?? []
+        // Keep each line's confidence (from its top candidate) so the hygiene pass can drop the
+        // recognizer's weakest guesses; the joined text is for logging and the title fallback only.
+        let lines = observations
+            .sorted {
+                if Swift.abs($0.boundingBox.minY - $1.boundingBox.minY) > 0.02 {
+                    return $0.boundingBox.minY > $1.boundingBox.minY
+                }
+                return $0.boundingBox.minX < $1.boundingBox.minX
+            }
+            .compactMap { observation -> OCRTextHygiene.OCRLine? in
+                guard let candidate = observation.topCandidates(1).first else { return nil }
+                let trimmed = candidate.string.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return nil }
+                return OCRTextHygiene.OCRLine(text: trimmed, confidence: candidate.confidence, boundingBox: observation.boundingBox)
+            }
+        return .success(lines)
     }
 
     /// Keeps OCR latency bounded on very large Retina windows by scaling the image to a reasonable

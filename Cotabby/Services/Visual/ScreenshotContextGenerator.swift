@@ -84,7 +84,10 @@ final class ScreenshotContextGenerator: ScreenshotContextGenerating {
 
         onStatusChange?(.extractingText)
 
-        let pixelHash = await Task.detached(priority: .utility) { Self.pixelHash(of: screenshot.image) }.value
+        let excludedField = screenshot.fieldBounds
+        let pixelHash = await Task.detached(priority: .utility) {
+            Self.pixelHash(of: screenshot.image, excluding: excludedField)
+        }.value
         try Task.checkCancellation()
         if let pixelHash, let cached = cachedExtraction(for: pixelHash, configuration: configuration) {
             return try await finishedExcerpt(from: cached, context: context, screenshot: screenshot, configuration: configuration)
@@ -144,14 +147,17 @@ final class ScreenshotContextGenerator: ScreenshotContextGenerating {
         // line that merely echoes the user's own field text, then sanitize for prompt-injection
         // safety. No model summarization: a base model conditions fine on cleaned raw context, and
         // the old summary step cost an extra generation per refresh and could hallucinate.
+        // The writer's own draft comes from Accessibility; its on-screen copy (possibly from an
+        // older capture served by the cache) must not reach the prompt as "screen context".
+        let lines = Self.lines(extracted.lines, outside: screenshot.fieldBounds)
         let normalizedText = await Task.detached(priority: .utility) {
             let cleanedOCR = configuration.capturesEntireWindow ? VisualContextExcerptSelector.select(
-                lines: extracted.lines,
+                lines: lines,
                 fieldText: context.precedingText + " " + context.trailingText,
                 focusBounds: screenshot.focusBounds,
                 maxCharacters: configuration.maxSummaryCharacters
             ) : OCRTextHygiene.clean(
-                lines: extracted.lines,
+                lines: lines,
                 fieldText: context.precedingText + " " + context.trailingText,
                 maxChars: configuration.maxRecognizedCharacters
             )
@@ -192,7 +198,9 @@ final class ScreenshotContextGenerator: ScreenshotContextGenerating {
     /// any real content change moves enough antialiased pixels that a stride collision is
     /// vanishingly unlikely, and the worst case of one is reusing OCR text for a window whose
     /// pixels barely changed. `nil` (no readable backing data) simply disables caching.
-    nonisolated private static func pixelHash(of image: CGImage) -> UInt64? {
+    /// Pixels inside `excluding` (the focused field, Vision coordinates) are skipped, so typing and
+    /// the blinking caret do not force a new Vision pass while the rest of the window is unchanged.
+    nonisolated static func pixelHash(of image: CGImage, excluding: CGRect? = nil) -> UInt64? {
         guard let data = image.dataProvider?.data,
               let bytes = CFDataGetBytePtr(data) else {
             return nil
@@ -201,17 +209,45 @@ final class ScreenshotContextGenerator: ScreenshotContextGenerating {
         let length = CFDataGetLength(data)
         let prime: UInt64 = 0x0000_0100_0000_01B3
         var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        let bytesPerRow = max(image.bytesPerRow, 1)
+        let bytesPerPixel = max(image.bitsPerPixel / 8, 1)
+        // The excluded field in pixel rows/columns (image rows run top to bottom).
+        var skip: (rows: Range<Int>, columns: Range<Int>)?
+        if let field = excluding {
+            let width = CGFloat(image.width), height = CGFloat(image.height)
+            let top = Int(((1 - field.maxY) * height).rounded(.down))
+            let bottom = Int(((1 - field.minY) * height).rounded(.up))
+            let left = Int((field.minX * width).rounded(.down))
+            let right = Int((field.maxX * width).rounded(.up))
+            if top < bottom, left < right {
+                skip = (max(top, 0)..<bottom, max(left, 0)..<right)
+            }
+        }
         var index = 0
         // 17, not 16: with 4-byte pixels a multiple-of-4 stride lands on the same color channel
         // forever, so a chroma-only change (e.g. a theme toggle with unchanged luminance) could
         // hash identically. A stride coprime with the pixel size cycles through all four channels.
         while index < length {
+            if let skip, skip.rows.contains(index / bytesPerRow),
+               skip.columns.contains((index % bytesPerRow) / bytesPerPixel) {
+                index += 17
+                continue
+            }
             hash = (hash ^ UInt64(bytes[index])) &* prime
             index += 17
         }
         hash = (hash ^ UInt64(image.width)) &* prime
         hash = (hash ^ UInt64(image.height)) &* prime
         return hash
+    }
+
+    /// OCR lines whose centre is outside the focused field (all of them when there is no field).
+    nonisolated static func lines(_ lines: [OCRTextHygiene.OCRLine], outside field: CGRect?) -> [OCRTextHygiene.OCRLine] {
+        guard let field else { return lines }
+        return lines.filter { line in
+            guard let box = line.boundingBox else { return true }
+            return !field.contains(CGPoint(x: box.midX, y: box.midY))
+        }
     }
 
     private func cachedExtraction(for hash: UInt64, configuration: VisualContextConfiguration) -> ExtractedScreenText? {

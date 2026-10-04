@@ -52,7 +52,15 @@ nonisolated final class SymSpell {
     /// FNV-1a hash of a delete-variant -> the dictionary word indices that produce it. Hash
     /// collisions are harmless: every candidate is verified with a real bounded edit-distance check,
     /// so a colliding entry is simply discarded.
-    private var deletes: [Int: [Int32]] = [:]
+    ///
+    /// Stored flat, not as `[Int: [Int32]]`: one Swift array per bucket cost about 60 bytes of
+    /// object overhead for a few bytes of payload, which for two languages came to over 100 MB.
+    /// `deleteKeys` is sorted; bucket `i` holds `deleteWords[deleteOffsets[i] ..< deleteOffsets[i + 1]]`.
+    /// New entries collect in `pendingDeletes` and are merged in before the next lookup.
+    private var deleteKeys: [Int] = []
+    private var deleteOffsets: [Int32] = [0]
+    private var deleteWords: [Int32] = []
+    private var pendingDeletes: [(key: Int, word: Int32)] = []
     private var maxDictionaryWordLength = 0
 
     init(maxDictionaryEditDistance: Int = 2, prefixLength: Int = 7) {
@@ -72,6 +80,7 @@ nonisolated final class SymSpell {
             guard parts.count >= 2, let count = Int64(parts[1]) else { continue }
             createDictionaryEntry(key: String(parts[0]), count: count)
         }
+        compactDeleteIndex()
     }
 
     func createDictionaryEntry(key: String, count: Int64) {
@@ -83,7 +92,7 @@ nonisolated final class SymSpell {
         let chars = Array(key)
         if chars.count > maxDictionaryWordLength { maxDictionaryWordLength = chars.count }
         for delete in editsPrefix(chars) {
-            deletes[Self.hash(delete), default: []].append(index)
+            pendingDeletes.append((Self.hash(delete), index))
         }
     }
 
@@ -119,6 +128,7 @@ nonisolated final class SymSpell {
     /// dictionary match short-circuits to distance 0.
     func lookup(_ input: String, maxEditDistance: Int? = nil) -> [SymSpellSuggestion] {
         let maxED = min(maxEditDistance ?? maxDictionaryEditDistance, maxDictionaryEditDistance)
+        if !pendingDeletes.isEmpty { compactDeleteIndex() }
         let inputChars = Array(input)
         let inputLen = inputChars.count
 
@@ -181,7 +191,7 @@ nonisolated final class SymSpell {
         considered: inout Set<String>,
         into suggestions: inout [SymSpellSuggestion]
     ) {
-        guard let dictIndices = deletes[Self.hash(String(candidate))] else { return }
+        guard let dictIndices = deleteBucket(for: Self.hash(String(candidate))) else { return }
         for index in dictIndices {
             let suggestion = wordsList[Int(index)]
             if suggestion == query.input { continue }
@@ -261,6 +271,48 @@ nonisolated final class SymSpell {
 
     /// FNV-1a over UTF-8. Deterministic within a run; the index is rebuilt each launch so we do not
     /// depend on a stable hash across processes.
+    /// The dictionary word indices whose delete-variants hash to `key`, in insertion order.
+    private func deleteBucket(for key: Int) -> ArraySlice<Int32>? {
+        var low = 0, high = deleteKeys.count
+        while low < high {
+            let mid = (low + high) / 2
+            if deleteKeys[mid] < key { low = mid + 1 } else { high = mid }
+        }
+        guard low < deleteKeys.count, deleteKeys[low] == key else { return nil }
+        return deleteWords[Int(deleteOffsets[low])..<Int(deleteOffsets[low + 1])]
+    }
+
+    /// Merges `pendingDeletes` into the flat index. Sorting by (key, word) keeps each bucket in
+    /// insertion order, because word indices grow as words are added.
+    private func compactDeleteIndex() {
+        guard !pendingDeletes.isEmpty else { return }
+        var pairs = pendingDeletes
+        pendingDeletes = []
+        pairs.reserveCapacity(pairs.count + deleteWords.count)
+        for bucket in deleteKeys.indices {
+            for position in Int(deleteOffsets[bucket])..<Int(deleteOffsets[bucket + 1]) {
+                pairs.append((deleteKeys[bucket], deleteWords[position]))
+            }
+        }
+        pairs.sort { $0.key == $1.key ? $0.word < $1.word : $0.key < $1.key }
+
+        var keys: [Int] = []
+        var offsets: [Int32] = [0]
+        var wordIndices: [Int32] = []
+        wordIndices.reserveCapacity(pairs.count)
+        for pair in pairs {
+            if keys.last != pair.key {
+                if !keys.isEmpty { offsets.append(Int32(wordIndices.count)) }
+                keys.append(pair.key)
+            }
+            wordIndices.append(pair.word)
+        }
+        offsets.append(Int32(wordIndices.count))
+        deleteKeys = keys
+        deleteOffsets = offsets
+        deleteWords = wordIndices
+    }
+
     static func hash(_ string: String) -> Int {
         var hash: UInt64 = 0xcbf2_9ce4_8422_2325
         for byte in string.utf8 {

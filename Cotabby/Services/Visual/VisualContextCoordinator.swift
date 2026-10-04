@@ -17,7 +17,13 @@ final class VisualContextCoordinator {
     private let screenRecordingPermissionProvider: @MainActor () -> Bool
     private let refreshIntervalNanoseconds: UInt64
     private let excerptLifetimeNanoseconds: UInt64
+    private let idlePauseSeconds: TimeInterval
     private let now: () -> TimeInterval
+    /// When the writer last typed or clicked (see `noteUserActivity`).
+    private var lastActivityAt: TimeInterval = 0
+    /// The session whose periodic refresh stopped because the writer went idle; the next activity
+    /// in the same field restarts it with an immediate capture.
+    private var refreshPausedSessionID: UUID?
     private var configuration = VisualContextConfiguration.default
     private var refreshTask: Task<Void, Never>?
     private var expiryTask: Task<Void, Never>?
@@ -45,8 +51,10 @@ final class VisualContextCoordinator {
         screenRecordingPermissionProvider: @escaping @MainActor () -> Bool,
         refreshIntervalNanoseconds: UInt64 = 3_000_000_000,
         excerptLifetimeNanoseconds: UInt64 = 6_000_000_000,
+        idlePauseSeconds: TimeInterval = 15,
         now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     ) {
+        self.idlePauseSeconds = idlePauseSeconds
         self.screenshotContextGenerator = screenshotContextGenerator
         self.screenRecordingPermissionProvider = screenRecordingPermissionProvider
         self.refreshIntervalNanoseconds = refreshIntervalNanoseconds
@@ -159,6 +167,8 @@ final class VisualContextCoordinator {
         activeAugmentationSession = session
         activeSessionIdentity = snapshotContext.sessionIdentity
         latestExcerpt = nil
+        lastActivityAt = now()
+        refreshPausedSessionID = nil
         status = initialStatus
         publishState()
 
@@ -238,13 +248,22 @@ final class VisualContextCoordinator {
     /// One timer per field, rearmed only after capture completes: slow OCR cannot accumulate jobs.
     /// Refresh uses the same engine-specific crop and limits as the initial capture. In particular,
     /// enabling endpoint refresh does not widen what can reach a network request.
-    private func scheduleRefresh(sessionID: UUID) {
+    ///
+    /// Refreshing stops while the writer is idle: a screenshot and a pixel hash every few seconds
+    /// cost CPU (and WindowServer time) even when nothing is being typed. The excerpt then expires
+    /// on its usual lifetime, and the next keystroke or click captures again at once.
+    private func scheduleRefresh(sessionID: UUID, delayNanoseconds: UInt64? = nil) {
         guard refreshContextProvider != nil else { return }
-        let delay = refreshIntervalNanoseconds
+        let delay = delayNanoseconds ?? refreshIntervalNanoseconds
         refreshTask = Task { [weak self] in
             do { try await Task.sleep(nanoseconds: delay) } catch { return }
             guard let self, !Task.isCancelled,
                   let session = self.activeAugmentationSession, session.sessionID == sessionID else { return }
+            if self.now() - self.lastActivityAt >= self.idlePauseSeconds {
+                self.refreshPausedSessionID = sessionID
+                self.refreshTask = nil
+                return
+            }
             let liveContext = self.refreshContextProvider?()
             // Refreshing AX can synchronously publish a different field and start its session.
             // Never cancel that replacement on behalf of this old timer.
@@ -273,6 +292,7 @@ final class VisualContextCoordinator {
         activeSessionIdentity = nil
         refreshTask?.cancel()
         refreshTask = nil
+        refreshPausedSessionID = nil
         pendingStartTask?.cancel()
         pendingStartTask = nil
         pendingStartContext = nil
@@ -395,4 +415,14 @@ final class VisualContextCoordinator {
     }
 }
 
-extension VisualContextCoordinator: VisualContextCoordinating {}
+extension VisualContextCoordinator: VisualContextCoordinating {
+    /// The writer typed or clicked. Restarts a refresh that paused while they were idle, with an
+    /// immediate capture so the next suggestion gets fresh screen context.
+    func noteUserActivity() {
+        lastActivityAt = now()
+        guard let paused = refreshPausedSessionID else { return }
+        refreshPausedSessionID = nil
+        guard activeAugmentationSession?.sessionID == paused, visualContextTask == nil else { return }
+        scheduleRefresh(sessionID: paused, delayNanoseconds: 0)
+    }
+}

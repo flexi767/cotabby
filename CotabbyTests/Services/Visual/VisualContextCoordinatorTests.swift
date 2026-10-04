@@ -134,6 +134,49 @@ final class VisualContextCoordinatorTests: XCTestCase {
         XCTAssertNil(coordinator.latestExcerpt)
     }
 
+    func test_refreshPausesWhileIdleAndResumesOnActivity() async throws {
+        let generator = StubVisualContextGenerator()
+        var uptime: TimeInterval = 100
+        let coordinator = VisualContextCoordinator(
+            screenshotContextGenerator: generator, screenRecordingPermissionProvider: { true },
+            refreshIntervalNanoseconds: 20_000_000, excerptLifetimeNanoseconds: 60_000_000_000,
+            idlePauseSeconds: 15, now: { uptime }
+        )
+        let snapshot = CotabbyTestFixtures.focusedInputSnapshot()
+        coordinator.refreshContextProvider = { snapshot }
+        coordinator.startSessionIfNeeded(for: snapshot, configuration: .local)
+        defer { coordinator.cancel(resetState: true) }
+        try await waitUntil { generator.completedCount >= 2 }
+
+        // Idle: the periodic capture stops instead of running every interval.
+        uptime += 20
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let pausedCount = generator.completedCount
+        try await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertEqual(generator.completedCount, pausedCount, "No captures while the writer is idle")
+
+        // The next keystroke captures at once and the periodic refresh runs again.
+        coordinator.noteUserActivity()
+        try await waitUntil { generator.completedCount >= pausedCount + 2 }
+    }
+
+    func test_activityWithoutAPausedRefreshDoesNotAddCaptures() async throws {
+        let generator = StubVisualContextGenerator()
+        let coordinator = VisualContextCoordinator(
+            screenshotContextGenerator: generator, screenRecordingPermissionProvider: { true },
+            refreshIntervalNanoseconds: 5_000_000_000
+        )
+        let snapshot = CotabbyTestFixtures.focusedInputSnapshot()
+        coordinator.refreshContextProvider = { snapshot }
+        coordinator.startSessionIfNeeded(for: snapshot, configuration: .local)
+        defer { coordinator.cancel(resetState: true) }
+        try await waitUntil { generator.completedCount == 1 }
+
+        coordinator.noteUserActivity()
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(generator.completedCount, 1)
+    }
+
     func test_timerExpiresExcerptWithoutAnotherRequest() async throws {
         let generator = StubVisualContextGenerator()
         let coordinator = VisualContextCoordinator(
