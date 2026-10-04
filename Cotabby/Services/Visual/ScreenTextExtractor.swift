@@ -130,14 +130,15 @@ struct ScreenTextExtractor: ScreenTextExtracting {
     private static let recognitionQueue = DispatchQueue(label: "com.cotabby.ocr", qos: .userInitiated)
 
     /// Accurate OCR is slower, but visual context refresh is throttled independently of typing and
-    /// the result can materially improve autocomplete relevance. Language correction is on for the
-    /// same reason: it cuts garbled recognitions at the source, which matters because this text
-    /// conditions the prompt and the downstream hygiene filters can only drop junk, not repair it.
+    /// the result can materially improve autocomplete relevance. Language correction is off: on a
+    /// real 3840x2560 screen capture scaled to 2400 px it quadrupled the CPU per pass (416 ms vs
+    /// 105 ms, warm) while recognizing the same words (100% of them, a few more without it); the
+    /// hygiene filters downstream already drop the garbled lines it would have repaired.
     /// Only touched on `recognitionQueue`.
     nonisolated(unsafe) private static let sharedRequest: VNRecognizeTextRequest = {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
-        request.usesLanguageCorrection = true
+        request.usesLanguageCorrection = false
         request.minimumTextHeight = 0.008
         return request
     }()

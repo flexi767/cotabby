@@ -6,12 +6,12 @@ import Foundation
 /// sit beside "Mijn offerte" as soon as the page is in front, without the writer clicking a field.
 ///
 /// The focus tracker only describes the focused text field, which is why this is its own small
-/// watcher: twice a second it asks the frontmost Chromium browser for its focused window and, only
+/// watcher: about once a second it asks the frontmost Chromium browser for its focused window and, only
 /// when that window's title names Informex, finds the page (its web area), checks the page address
 /// (`VATCounterpartRule.applies`: the portal host and the `/auction` path), finds the "Mijn offerte"
 /// field (DOM id `bidI`) and reads the vehicle (`InformexVehicle`). The page walk runs once per page;
-/// afterwards each tick only re-reads the address and the field's position, so following scrolling
-/// costs two attribute reads. Every other app and page costs one title read.
+/// afterwards each 0.15 s tick only re-reads the address and the field's position, so following
+/// scrolling costs two attribute reads. Every other app and page costs one title read a second.
 ///
 /// Owned by `CotabbyAppEnvironment`, started by `AppDelegate`, which forwards each change to
 /// `VehicleSearchOverlayController`. Reads only; it never writes to the page.
@@ -29,6 +29,11 @@ final class InformexPageWatcher {
 
     private var timer: Timer?
     private var lastPlacement: Placement?
+    /// Ticks to skip before looking again while no offer page is in front. Each look asks the
+    /// browser for its focused window and title (two cross-process calls); at the full rate that was
+    /// the largest steady cost in the profile while browsing any other page.
+    private var ticksUntilNextLook = 0
+    static let ticksPerLookWithoutPage = 6
     private var page: CachedPage?
     /// The field's frame on the previous tick and since when it has not moved: while it moves (the
     /// page is scrolling) the buttons hide, and they return once it has settled.
@@ -77,6 +82,14 @@ final class InformexPageWatcher {
     }
 
     private func tick() {
+        // Following the field on the offer page needs the full rate; finding the page does not.
+        if page == nil {
+            guard ticksUntilNextLook <= 0 else {
+                ticksUntilNextLook -= 1
+                return
+            }
+            ticksUntilNextLook = Self.ticksPerLookWithoutPage - 1
+        }
         publish(currentPlacement())
     }
 

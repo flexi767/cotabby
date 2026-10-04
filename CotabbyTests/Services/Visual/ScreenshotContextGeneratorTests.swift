@@ -182,15 +182,18 @@ final class ScreenshotContextGeneratorTests: XCTestCase {
         XCTAssertEqual(ScreenshotContextGenerator.lines([inField, above], outside: nil), [inField, above])
     }
 
-    func test_onlyASmallFieldIsExcluded() {
+    func test_theFocusedFieldIsAlwaysExcluded() {
         let window = CGRect(x: 100, y: 100, width: 1000, height: 800)
         let composer = CGRect(x: 200, y: 750, width: 600, height: 80)
         let documentEditor = CGRect(x: 100, y: 150, width: 1000, height: 700)
+        let elsewhere = CGRect(x: 2000, y: 2000, width: 100, height: 20)
 
         let bounds = WindowScreenshotService.excludedFieldBounds(field: composer, sourceRect: window)
         XCTAssertNotNil(bounds)
         XCTAssertEqual(bounds?.minY ?? -1, 1 - (834.0 - 100) / 800, accuracy: 0.001, "Vision y runs bottom-up")
-        XCTAssertNil(WindowScreenshotService.excludedFieldBounds(field: documentEditor, sourceRect: window))
+        // The writer's own text is known from Accessibility, even in a full-window editor.
+        XCTAssertNotNil(WindowScreenshotService.excludedFieldBounds(field: documentEditor, sourceRect: window))
+        XCTAssertNil(WindowScreenshotService.excludedFieldBounds(field: elsewhere, sourceRect: window))
     }
 
     func test_generateContext_cacheHoldsTheFourMostRecentCrops() async throws {

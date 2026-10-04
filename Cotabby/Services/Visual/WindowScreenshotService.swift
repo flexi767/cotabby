@@ -16,11 +16,11 @@ struct CapturedWindowScreenshot {
     let image: CGImage
     let windowTitle: String?
     var focusBounds: CGRect?
-    /// The focused field itself, in Vision coordinates (unit square, origin bottom left), when it is
-    /// a small part of the capture. Its pixels change with every keystroke and caret blink, and its
-    /// text is the writer's own draft (already known from Accessibility), so the extraction cache
-    /// ignores it and its OCR lines are dropped. Nil for a field that fills most of the window
-    /// (a document editor), where the field is the context and nothing is excluded.
+    /// The focused field itself, in Vision coordinates (unit square, origin bottom left). Its pixels
+    /// change with every keystroke and caret blink, and its text is the writer's own draft, which
+    /// Cotabby already has from Accessibility (preceding and trailing text), so it is never read off
+    /// the screen: the extraction cache ignores it and its OCR lines are dropped. That holds for a
+    /// document editor too, where the field fills the window and only the surrounding UI is read.
     var fieldBounds: CGRect? = nil
 }
 
@@ -190,17 +190,12 @@ struct WindowScreenshotService: WindowScreenshotCapturing {
         ).integral
     }
 
-    /// Fields covering more than this share of the capture are treated as the content itself.
-    static let maximumExcludedFieldAreaFraction: CGFloat = 0.4
-
     /// The field in Vision coordinates, padded by a few points so the caret and focus ring are
-    /// inside it, or nil when it is too large to exclude or falls outside the capture.
+    /// inside it, or nil when it falls outside the capture.
     static func excludedFieldBounds(field: CGRect, sourceRect: CGRect) -> CGRect? {
         guard sourceRect.width > 0, sourceRect.height > 0, !field.isNull, !field.isEmpty else { return nil }
         let padded = field.insetBy(dx: -4, dy: -4).intersection(sourceRect)
-        guard !padded.isNull, !padded.isEmpty,
-              padded.width * padded.height <= sourceRect.width * sourceRect.height * maximumExcludedFieldAreaFraction
-        else { return nil }
+        guard !padded.isNull, !padded.isEmpty else { return nil }
         return CGRect(
             x: (padded.minX - sourceRect.minX) / sourceRect.width,
             y: 1 - (padded.maxY - sourceRect.minY) / sourceRect.height,
