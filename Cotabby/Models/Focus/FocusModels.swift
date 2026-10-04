@@ -408,6 +408,11 @@ nonisolated struct FocusedInputSnapshot: Equatable {
     /// compiling unchanged.
     let fieldPlaceholder: String?
 
+    /// The field's accessible name (its label, `aria-label`, title) and DOM id, read once per field
+    /// and only for form classification (`FormFieldPurpose`), never sent to a prompt. Nil when the
+    /// field has none or is secure. The initializer default keeps existing call sites compiling.
+    let fieldName: String?
+
     /// How the host renders text near the caret (measured widths, line box, line pitch), resolved
     /// once per field so the ghost can match the host's typeface and wrap geometry. Nil when the
     /// host exposes no measurable text geometry. The initializer default keeps existing call sites
@@ -449,6 +454,7 @@ nonisolated struct FocusedInputSnapshot: Equatable {
         resolvedFieldStyle: ResolvedFieldStyle? = nil,
         windowTitle: String? = nil,
         fieldPlaceholder: String? = nil,
+        fieldName: String? = nil,
         hostTextMetrics: HostTextMetrics? = nil,
         elementFrameRect: CGRect? = nil,
         hostMarkedTextRange: NSRange? = nil,
@@ -476,6 +482,7 @@ nonisolated struct FocusedInputSnapshot: Equatable {
         self.resolvedFieldStyle = resolvedFieldStyle
         self.windowTitle = windowTitle
         self.fieldPlaceholder = fieldPlaceholder
+        self.fieldName = fieldName
         self.hostTextMetrics = hostTextMetrics
         self.elementFrameRect = elementFrameRect
         self.hostMarkedTextRange = hostMarkedTextRange

@@ -262,6 +262,46 @@ final class SuggestionCoordinatorPredictionTests: SuggestionCoordinatorRigTestCa
         XCTAssertNil(rig.interactionState.activeSession)
     }
 
+    /// Typing an email, then moving to the field that asks for it again, offers the whole address
+    /// at once (no keystroke, no model), exactly as typed.
+    func test_aConfirmEmailFieldIsOfferedTheEmailJustEntered() async {
+        let rig = retained(makeCoordinatorRig(
+            snapshot: CotabbyTestFixtures.focusedInputSnapshot(elementIdentifier: "email", precedingText: "")
+        ))
+        publishSnapshot(CotabbyTestFixtures.focusedInputSnapshot(
+            elementIdentifier: "email", precedingText: "Jan.Peeters@example.be"), in: rig)
+        publishSnapshot(CotabbyTestFixtures.focusedInputSnapshot(
+            elementIdentifier: "email-confirm", precedingText: "", fieldPlaceholder: "Confirm email"), in: rig)
+
+        guard case let .ready(text, latency) = rig.coordinator.state else {
+            return XCTFail("Expected the remembered email at once, got \(rig.coordinator.state)")
+        }
+        XCTAssertEqual(text, "Jan.Peeters@example.be")
+        XCTAssertEqual(latency, 0)
+        XCTAssertTrue(rig.engine.requests.isEmpty)
+    }
+
+    /// A CAPTCHA or one-time code field gets nothing: no instant source, no model request.
+    func test_aVerificationCodeFieldGetsNoSuggestion() async {
+        let rig = retained(makeCoordinatorRig(
+            snapshot: CotabbyTestFixtures.focusedInputSnapshot(precedingText: "7K", fieldName: "captcha_input")
+        ))
+
+        rig.coordinator.schedulePrediction()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(rig.coordinator.state, .idle)
+        XCTAssertTrue(rig.engine.requests.isEmpty)
+        XCTAssertNil(rig.interactionState.activeSession)
+    }
+
+    private func publishSnapshot(_ raw: FocusedInputSnapshot, in rig: CoordinatorRig) {
+        let snapshot = FocusSnapshot(applicationName: raw.applicationName, bundleIdentifier: raw.bundleIdentifier,
+                                     capability: .supported, context: raw)
+        rig.focusProvider.snapshot = snapshot
+        rig.focusProvider.snapshotSubject.send(snapshot)
+    }
+
     func test_phraseFastPathStaysQuietWhenPhraseMemoryIsOff() async {
         let rig = retained(makeCoordinatorRig(
             snapshot: CotabbyTestFixtures.focusedInputSnapshot(precedingText: "Thanks! I will send the ")

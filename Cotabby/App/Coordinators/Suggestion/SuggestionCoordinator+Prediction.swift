@@ -25,8 +25,12 @@ extension SuggestionCoordinator {
             disablePredictions(reason: disabledReason)
             return
         }
+        // A CAPTCHA or one-time code is read off something else; any suggestion there is a guess.
+        if holdForVerificationCodeField() { return }
         // An offer amount computed from the other field, or nothing (never a model guess there).
         if presentFormCounterpartIfApplicable() { return }
+        // The email the writer just entered, where the form asks for it again.
+        if presentRecentEmailIfPossible() { return }
         // A learned phrase or a strong word habit needs neither a pause nor the model.
         if presentInstantSuggestionIfPossible() { return }
 
@@ -242,6 +246,40 @@ extension SuggestionCoordinator {
             ? instant.text
             : SuggestionLengthPolicy.trimmed(instant.text, minimum: range.lowWords, maximum: range.highWords)
         return showInstantSuggestion(text, rawText: instant.text, source: instant.source, rawContext: rawContext)
+    }
+
+    /// In a field that wants a CAPTCHA or a one-time code (`FormFieldPurpose.verificationCode`), shows
+    /// nothing and starts no generation: the answer is on an image, a phone or an authenticator, so
+    /// a model can only invent characters. Returns true when the focused field is one.
+    private func holdForVerificationCodeField() -> Bool {
+        guard let context = focusModel.snapshot.context,
+              FormFieldPurpose.classify(placeholder: context.fieldPlaceholder, name: context.fieldName)
+                == .verificationCode else { return false }
+        cancelPredictionWork()
+        clearSuggestion()
+        hideOverlay(reason: "Overlay hidden: verification code fields get no suggestions.")
+        state = .idle
+        return true
+    }
+
+    /// The rest of the email the writer entered a moment ago in another field of this app
+    /// (`RecentEmailMemory`): the whole address in an empty "confirm email" field, the remainder once
+    /// they start typing it elsewhere. Exact, so never trimmed to the word preset. Independent of
+    /// the learning switch: it is held in memory for minutes and never stored.
+    private func presentRecentEmailIfPossible() -> Bool {
+        guard recentEmailMemory.entry != nil else { return false }
+        focusModel.refreshIfStale(maxAgeMilliseconds: Self.freshSnapshotReuseWindowMilliseconds)
+        let snapshot = focusModel.snapshot
+        guard currentDisabledReason(focusSnapshot: snapshot) == nil, let rawContext = snapshot.context,
+              !rawContext.isSecure, rawContext.selection.length == 0, !rawContext.hasHostMarkedText,
+              let rest = recentEmailMemory.suggestion(
+                  typed: rawContext.precedingText,
+                  trailing: rawContext.trailingText,
+                  processIdentifier: rawContext.processIdentifier,
+                  elementIdentifier: rawContext.elementIdentifier,
+                  purpose: FormFieldPurpose.classify(placeholder: rawContext.fieldPlaceholder, name: rawContext.fieldName)
+              ) else { return false }
+        return showInstantSuggestion(rest, rawText: rest, source: "email", rawContext: rawContext)
     }
 
     /// On the offer form's linked amount fields (`VATCounterpartRule`), shows the amount computed from

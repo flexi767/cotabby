@@ -32,6 +32,7 @@ enum CotabbyTestFixtures {
         focusedURLString: String? = nil,
         windowTitle: String? = nil,
         fieldPlaceholder: String? = nil,
+        fieldName: String? = nil,
         hostMarkedTextRange: NSRange? = nil,
         formCounterpart: FormCounterpartReading? = nil
     ) -> FocusedInputSnapshot {
@@ -61,6 +62,7 @@ enum CotabbyTestFixtures {
             focusedURLString: focusedURLString,
             windowTitle: windowTitle,
             fieldPlaceholder: fieldPlaceholder,
+            fieldName: fieldName,
             hostMarkedTextRange: hostMarkedTextRange,
             formCounterpart: formCounterpart
         )

@@ -50,6 +50,7 @@ struct FocusSnapshotResolver {
     private let formCounterpartCache = FocusSessionScopedCache<FormCounterpartReading?>()
     /// Attribute-name lists per element, re-read at most every couple of seconds (see the type).
     private let attributeNameCache = AXAttributeNameCache()
+    private let fieldNameCache = AXFieldNameCache()
     /// The text margin the caret's paragraph wraps to, which a field's `AXFrame` does not reveal
     /// (Word's frame is the page edge, not the text margin). Up to three AX round trips, so each
     /// result is cached per focus session *and* per paragraph: the margin changes between an indented
@@ -270,6 +271,7 @@ struct FocusSnapshotResolver {
         let fieldPlaceholder = resolvedCandidate.isSecure ? nil : AXHelper.stringValue(
             for: kAXPlaceholderValueAttribute as CFString, on: resolvedCandidate.element
         )
+        let fieldName = resolvedCandidate.isSecure ? nil : fieldNameCache.name(of: resolvedCandidate.element)
         let focusedURLString = wantsURL ? AXHelper.webURL(near: resolvedCandidate.element) : nil
         // Gmail writes its Smart Compose suggestion and a "tab" hint into the compose body right after
         // the caret: the host's own prediction, held like the address bar's completion (see
@@ -360,6 +362,7 @@ struct FocusSnapshotResolver {
             resolvedFieldStyle: resolvedFieldStyle,
             windowTitle: windowTitle,
             fieldPlaceholder: fieldPlaceholder,
+            fieldName: fieldName,
             hostTextMetrics: Self.mergingRunLinePitch(hostTextMetrics, edges: observedContentEdges),
             elementFrameRect: resolvedCandidate.elementFrameRect,
             hostMarkedTextRange: resolvedCandidate.markedTextRange ?? chromiumCompletionRange ?? smartComposeRange,

@@ -75,10 +75,14 @@ extension SuggestionCoordinator {
             "Focus snapshot changed: app=\(snapshot.applicationName) capability=\(snapshot.capability.shortLabel) detail=\(changedDetail)"
         )
         let offerFieldWasEmptied = trackOfferField(snapshot)
+        let repeatEmailFieldArrived = trackRecentEmail(snapshot)
         defer {
             // Emptying an offer field (select all, delete) produces no keystroke the prediction path
-            // acts on once the field reads empty, so offer the computed amount here.
-            if offerFieldWasEmptied, interactionState.activeSession == nil { schedulePrediction() }
+            // acts on once the field reads empty, so offer the computed amount here. Arriving in an
+            // empty "confirm email" field produces no keystroke either.
+            if offerFieldWasEmptied || repeatEmailFieldArrived, interactionState.activeSession == nil {
+                schedulePrediction()
+            }
         }
         // Learn from the writer's own finished text. This rides the focus stream rather than the
         // keystroke stream on purpose: the signal that a message was sent is the field going empty,
@@ -275,6 +279,22 @@ extension SuggestionCoordinator {
         session.latestValue = value
         offerFieldSession = session
         return wasEmptied
+    }
+
+    /// Follows fields for `RecentEmailMemory` and reports whether focus just arrived in an empty
+    /// field that asks for the remembered email again.
+    private func trackRecentEmail(_ snapshot: FocusSnapshot) -> Bool {
+        let context = snapshot.context
+        let previousElement = recentEmailMemory.currentElementIdentifier
+        recentEmailMemory.observe(
+            processIdentifier: context?.processIdentifier,
+            elementIdentifier: context?.elementIdentifier,
+            text: context.map { $0.precedingText + $0.trailingText },
+            isSecure: context?.isSecure ?? true
+        )
+        guard let context, recentEmailMemory.entry != nil, context.elementIdentifier != previousElement,
+              (context.precedingText + context.trailingText).isEmpty else { return false }
+        return FormFieldPurpose.classify(placeholder: context.fieldPlaceholder, name: context.fieldName) == .repeatEmail
     }
 
     /// Feeds the focused field's full text to the commit detector and records whatever it reports

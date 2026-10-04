@@ -168,6 +168,8 @@ final class SuggestionCoordinator: ObservableObject {
     /// The offer field being edited, if any: its value when focus arrived and its latest value, so
     /// the other field can be filled when the writer leaves it (see `VATCounterpartRule`).
     var offerFieldSession: OfferFieldSession?
+    /// The email address the writer just entered, offered again where a form asks to repeat it.
+    var recentEmailMemory = RecentEmailMemory()
 
     struct OfferFieldSession {
         let elementIdentifier: String
