@@ -607,14 +607,17 @@ final class InputMonitor {
         // key. When a visible overlay exists, the coordinator remains the final validator and can
         // clean up stale UI before this method passes the original key through.
         guard shouldConsumeAcceptKeyProvider() else {
+            // Warning, not debug: a declined accept key reaches the focused app as a typed character
+            // (the key above Tab types "^" on a German layout), so every one is worth a persisted
+            // line saying why. Never carries text, only the bound key's code.
             let message = "Accept tap declining to consume keyCode=\(keyEvent.keyCode): "
                 + "coordinator reports no visible suggestion"
-            CotabbyLogger.app.debug("\(message)")
+            CotabbyLogger.app.warning("\(message)")
             return .passThrough
         }
 
         guard let onEvent else {
-            CotabbyLogger.app.debug("Accept tap declining to consume keyCode=\(keyEvent.keyCode): no event handler")
+            CotabbyLogger.app.warning("Accept tap declining to consume keyCode=\(keyEvent.keyCode): no event handler")
             return .passThrough
         }
 

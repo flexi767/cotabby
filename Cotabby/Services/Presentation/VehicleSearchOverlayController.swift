@@ -77,7 +77,7 @@ final class VehicleSearchOverlayController: NSObject {
         stack.orientation = .horizontal
         stack.spacing = Self.spacing
         for target in [InformexVehicle.SearchTarget.mobileDE, .mobileBG] {
-            let button = NSButton(title: target == .mobileDE ? "de" : "bg", target: self, action: #selector(openSearch(_:)))
+            let button = PointingHandButton(title: target == .mobileDE ? "de" : "bg", target: self, action: #selector(openSearch(_:)))
             button.tag = target == .mobileDE ? 0 : 1
             button.bezelStyle = .regularSquare
             button.isBordered = false
@@ -178,5 +178,38 @@ final class VehicleSearchOverlayController: NSObject {
               let cropped = cgImage.cropping(to: CGRect(x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1))
         else { return image }
         return NSImage(cgImage: cropped, size: NSSize(width: cropped.width, height: cropped.height))
+    }
+}
+
+/// A button that shows the pointing-hand cursor while the mouse is over it. Cursor rects only work in
+/// the key window of the active app, and this panel never becomes key (the browser stays active), so
+/// the cursor is set from an always-active tracking area instead. Moves re-assert it, because the
+/// browser underneath may set its own cursor between events.
+final class PointingHandButton: NSButton {
+    private var cursorTrackingArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let cursorTrackingArea { removeTrackingArea(cursorTrackingArea) }
+        let area = NSTrackingArea(rect: .zero,
+                                  options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+                                  owner: self, userInfo: nil)
+        addTrackingArea(area)
+        cursorTrackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        NSCursor.pointingHand.set()
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        NSCursor.pointingHand.set()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        NSCursor.arrow.set()
     }
 }

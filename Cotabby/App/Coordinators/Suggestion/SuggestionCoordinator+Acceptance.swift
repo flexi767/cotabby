@@ -469,6 +469,13 @@ extension SuggestionCoordinator {
     /// return tells that tap to pass the original key event through naturally, so no synthetic
     /// replay is needed.
     func passTabThrough(reason: String) -> Bool {
+        // Persisted (warning) because the passed-through key lands in the field as a typed character
+        // while the writer was looking at ghost text, so each one needs a recorded reason. The
+        // reasons are fixed strings; no field text is logged.
+        let app = focusModel.snapshot.bundleIdentifier ?? "unknown"
+        CotabbyLogger.app.warning(
+            "Accept key passed through to the app (\(app), overlay visible: \(overlayState.isVisible)): \(reason)"
+        )
         suggestionPresentationTiming.clear()
         let generation = latestGenerationNumber
         cancelPredictionWork()
