@@ -6,12 +6,14 @@ import Foundation
 /// sit beside "Mijn offerte" as soon as the page is in front, without the writer clicking a field.
 ///
 /// The focus tracker only describes the focused text field, which is why this is its own small
-/// watcher: about once a second it asks the frontmost Chromium browser for its focused window and, only
+/// watcher. It runs only while a Chromium browser is the frontmost app (app switches are observed,
+/// so no timer runs at all elsewhere): about once a second it asks the browser for its focused window and, only
 /// when that window's title names Informex, finds the page (its web area), checks the page address
 /// (`VATCounterpartRule.applies`: the portal host and the `/auction` path), finds the "Mijn offerte"
 /// field (DOM id `bidI`) and reads the vehicle (`InformexVehicle`). The page walk runs once per page;
-/// afterwards each 0.15 s tick only re-reads the address and the field's position, so following
-/// scrolling costs two attribute reads. Every other app and page costs one title read a second.
+/// afterwards each 0.15 s tick reads only the field's position (one attribute read); the address is
+/// re-checked about once a second and the visible area is recomputed only when the field moves.
+/// Other pages in the browser cost one title read a second; other apps cost nothing.
 ///
 /// Owned by `CotabbyAppEnvironment`, started by `AppDelegate`, which forwards each change to
 /// `VehicleSearchOverlayController`. Reads only; it never writes to the page.
@@ -34,6 +36,15 @@ final class InformexPageWatcher {
     /// the largest steady cost in the profile while browsing any other page.
     private var ticksUntilNextLook = 0
     static let ticksPerLookWithoutPage = 6
+    /// On the page, the address is re-read every this many ticks; leaving the page also invalidates
+    /// the field element, whose frame read then fails at once, so this only bounds a same-tab
+    /// navigation that keeps the element alive.
+    static let ticksPerAddressCheck = 6
+    private var ticksUntilAddressCheck = 0
+    /// The visible area computed for `visibleAreaFieldFrame`; recomputed only when the field moves.
+    private var visibleArea: CGRect?
+    private var visibleAreaFieldFrame: CGRect?
+    private var activationObserver: NSObjectProtocol?
     private var page: CachedPage?
     /// The field's frame on the previous tick and since when it has not moved: while it moves (the
     /// page is scrolling) the buttons hide, and they return once it has settled.
@@ -46,6 +57,7 @@ final class InformexPageWatcher {
 
     private struct CachedPage {
         let processIdentifier: pid_t
+        let window: AXUIElement
         let webArea: AXUIElement
         let url: String
         let netField: AXUIElement
@@ -59,26 +71,57 @@ final class InformexPageWatcher {
     /// Room the buttons need to the right of the field (two 26 pt buttons, spacing, gap).
     static let buttonsWidth: CGFloat = 26 * 2 + 6 + 8
 
-    /// Fast enough to hide the buttons as soon as scrolling starts; each tick on the page costs two
-    /// attribute reads.
+    /// Fast enough to hide the buttons as soon as scrolling starts. A tick on the page reads the focused
+    /// window, its title and the field's frame (three attribute reads; formerly about twenty).
     static let interval: TimeInterval = 0.15
     /// How long the field must stay put before the buttons come back after a scroll.
     static let settleTime: TimeInterval = 0.3
 
     func start() {
-        guard timer == nil else { return }
-        let timer = Timer(timeInterval: Self.interval, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.tick() }
+        guard activationObserver == nil else { return }
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateTimerForFrontmostApp() }
         }
-        timer.tolerance = 0.1
-        RunLoop.main.add(timer, forMode: .common)
-        self.timer = timer
+        updateTimerForFrontmostApp()
     }
 
     func stop() {
+        if let activationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(activationObserver)
+        }
+        activationObserver = nil
+        stopTimer()
+        publish(nil)
+    }
+
+    /// Runs the timer only while a Chromium browser is in front; anywhere else the buttons cannot
+    /// apply, so nothing is polled and the timer does not wake the app.
+    private func updateTimerForFrontmostApp() {
+        let browserInFront = BrowserAppDetector.isChromiumBrowser(
+            bundleIdentifier: NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        )
+        guard browserInFront else {
+            stopTimer()
+            page = nil
+            publish(nil)
+            return
+        }
+        guard timer == nil else { return }
+        ticksUntilNextLook = 0
+        let timer = Timer(timeInterval: Self.interval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tick() }
+        }
+        timer.tolerance = 0.05
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+        tick()
+    }
+
+    private func stopTimer() {
         timer?.invalidate()
         timer = nil
-        publish(nil)
     }
 
     private func tick() {
@@ -114,14 +157,21 @@ final class InformexPageWatcher {
             return nil
         }
 
-        // Fast path: the same page as last tick. Re-read only its address and the field position.
-        if let cached = page, cached.processIdentifier == pid,
-           Self.url(of: cached.webArea) == cached.url {
-            return placement(for: cached, browser: app.bundleIdentifier)
+        // Fast path: the same page in the same window as last tick. Reads the field position, and the
+        // address about once a second.
+        if let cached = page, cached.processIdentifier == pid, CFEqual(cached.window, window) {
+            ticksUntilAddressCheck -= 1
+            if ticksUntilAddressCheck > 0 || Self.url(of: cached.webArea) == cached.url {
+                if ticksUntilAddressCheck <= 0 { ticksUntilAddressCheck = Self.ticksPerAddressCheck }
+                return placement(for: cached, browser: app.bundleIdentifier)
+            }
         }
 
         page = nil
         fullFieldHeight = 0
+        visibleArea = nil
+        visibleAreaFieldFrame = nil
+        ticksUntilAddressCheck = Self.ticksPerAddressCheck
         guard let webArea = Self.firstDescendant(of: window, limit: 3000, where: { node in
             AXHelper.stringValue(for: kAXRoleAttribute as CFString, on: node) == "AXWebArea"
         }), let url = Self.url(of: webArea), VATCounterpartRule.applies(toURL: url),
@@ -136,7 +186,7 @@ final class InformexPageWatcher {
             if CFEqual(parent, window) { break }
             node = parent
         }
-        let cached = CachedPage(processIdentifier: pid, webArea: webArea, url: url, netField: netField,
+        let cached = CachedPage(processIdentifier: pid, window: window, webArea: webArea, url: url, netField: netField,
                                 vehicle: vehicle, containers: containers)
         page = cached
         return placement(for: cached, browser: app.bundleIdentifier)
@@ -154,10 +204,13 @@ final class InformexPageWatcher {
         guard let still = fieldStillSince, now.timeIntervalSince(still) >= Self.settleTime else { return nil }
         fullFieldHeight = max(fullFieldHeight, field.height)
         guard field.height >= fullFieldHeight - 1 else { return nil }
-        let frames = page.containers.compactMap { AXHelper.rectValue(for: "AXFrame" as CFString, on: $0) }
-            .filter { $0.width > 0 && $0.height > 0 }
-        guard let first = frames.first else { return nil }
-        let visible = frames.dropFirst().reduce(first) { $0.intersection($1) }
+        if visibleAreaFieldFrame != field {
+            let frames = page.containers.compactMap { AXHelper.rectValue(for: "AXFrame" as CFString, on: $0) }
+                .filter { $0.width > 0 && $0.height > 0 }
+            visibleArea = frames.first.map { first in frames.dropFirst().reduce(first) { $0.intersection($1) } }
+            visibleAreaFieldFrame = field
+        }
+        guard let visible = visibleArea else { return nil }
         let needed = CGRect(x: field.minX, y: field.minY, width: field.width + Self.buttonsWidth, height: field.height)
         guard visible.contains(needed) else { return nil }
         return Placement(vehicle: page.vehicle,
