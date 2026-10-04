@@ -347,8 +347,10 @@ final class SuggestionCoordinator: ObservableObject {
             switch state {
             case .visible:
                 self.inputMonitor.setAcceptInterceptionActive(true)
+                self.focusModel.setTracksGeometryClosely(true, reason: "suggestion")
             case .hidden:
                 self.inputMonitor.setAcceptInterceptionActive(false)
+                self.focusModel.setTracksGeometryClosely(false, reason: "suggestion")
                 // A hidden overlay ends any post-exhaustion Tab-ownership window. Every teardown and
                 // abort path hides the overlay, so ending the window here is the single catch-all
                 // that returns the accept key to the host (and cancels the backstop timer) once the

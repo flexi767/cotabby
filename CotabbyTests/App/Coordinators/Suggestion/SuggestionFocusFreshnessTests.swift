@@ -28,6 +28,21 @@ final class SuggestionFocusFreshnessTests: XCTestCase {
         provider.refreshIfStale(maxAgeMilliseconds: 1000)
         XCTAssertEqual(provider.refreshCount, 1)
     }
+
+    /// A visible suggestion must move with its field when the page scrolls, so the focus poll runs
+    /// at the full rate exactly while one is on screen.
+    func test_visibleSuggestionAsksForCloseGeometryTrackingUntilHidden() async {
+        let rig = makeCoordinatorRig()
+        defer { rig.coordinator.stop() }
+        XCTAssertTrue(rig.focusProvider.closeTrackingReasons.isEmpty)
+
+        rig.coordinator.schedulePrediction()
+        await waitUntil { rig.coordinator.overlayState.isVisible }
+        XCTAssertEqual(rig.focusProvider.closeTrackingReasons, ["suggestion"])
+
+        rig.coordinator.hideOverlay(reason: "test")
+        XCTAssertTrue(rig.focusProvider.closeTrackingReasons.isEmpty)
+    }
 }
 
 @MainActor

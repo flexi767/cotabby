@@ -44,9 +44,17 @@ protocol SuggestionFocusProviding: AnyObject {
     /// provider-side caches built from pre-mutation reads must not serve the next capture.
     /// Providers without such caches use the default no-op.
     func invalidateTransientCaretCaches()
+
+    /// Follow the field's geometry at the full poll rate while `on`: a visible suggestion must move
+    /// with the field when the page scrolls. Otherwise focus is tracked by events and a slow backup
+    /// poll. Providers without a poll use the default no-op.
+    func setTracksGeometryClosely(_ on: Bool, reason: String)
 }
 
 extension SuggestionFocusProviding {
+    /// Default: no poll to speed up.
+    func setTracksGeometryClosely(_ on: Bool, reason: String) {}
+
     /// Conservative default: age unknown, so `refreshIfStale` always refreshes. Production
     /// providers report a real age; test fakes can ignore freshness entirely.
     var millisecondsSinceLastCapture: Int? { nil }

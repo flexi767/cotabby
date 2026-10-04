@@ -80,10 +80,19 @@ final class FocusTrackingModel: ObservableObject {
         tracker.refreshNow()
     }
 
-    /// Returns polling to its base cadence after a click without capturing now: the host has not
-    /// moved focus yet when the click is seen, so the next regular tick reads the new field.
-    func noteUserActivity() {
-        tracker.noteUserActivity()
+    /// A click may have moved focus; the tracker re-reads shortly after, once the host has acted.
+    func noteFocusMayHaveChanged() {
+        tracker.noteFocusMayHaveChanged()
+    }
+
+    /// Polls at the full rate while something on screen follows the field (see `FocusTracker`).
+    func setTracksGeometryClosely(_ on: Bool, reason: String) {
+        tracker.setTracksGeometryClosely(on, reason: reason)
+    }
+
+    /// The interval the tracker's poll timer is armed with, for tests.
+    var currentPollTimerInterval: TimeInterval? {
+        tracker.currentTimerInterval
     }
 
     /// Forwards the coordinator's "I just mutated the focused field" hint so resolver caches that

@@ -166,16 +166,46 @@ final class FocusTrackingModelTests: XCTestCase {
         }
     }
 
-    /// A click arrives before the host moves focus, so it only resets the cadence; a capture now
-    /// would read the old field and cost an Accessibility walk for nothing.
-    func test_noteUserActivity_doesNotCapture() {
-        runOnMainActor {
+    /// A click arrives before the host moves focus, so the capture waits briefly; clicks within
+    /// that wait fold into the same capture.
+    func test_noteFocusMayHaveChanged_capturesOnceAfterAShortDelay() {
+        let model = runOnMainActor { () -> FocusTrackingModel in
             let model = makeModel(publishesPollingEvents: true)
             model.start()
-
-            model.noteUserActivity()
-
+            model.noteFocusMayHaveChanged()
+            model.noteFocusMayHaveChanged()
             XCTAssertEqual(model.latestPollEvent?.sequence, 1)
+            return model
+        }
+
+        let captured = expectation(description: "delayed capture")
+        DispatchQueue.main.asyncAfter(deadline: .now() + FocusTracker.pointerCaptureDelay + 0.2) {
+            MainActor.assumeIsolated {
+                XCTAssertEqual(model.latestPollEvent?.sequence, 2)
+            }
+            captured.fulfill()
+        }
+        wait(for: [captured], timeout: 2)
+    }
+
+    /// Without anything following the field the poll is only a backup; a visible suggestion brings
+    /// it back to the configured rate, and hiding it lets it fall back again.
+    func test_pollInterval_isBackgroundUnlessGeometryIsTrackedClosely() {
+        runOnMainActor {
+            let model = makeModel()
+            model.updatePollInterval(milliseconds: 150)
+            model.start()
+            XCTAssertEqual(model.currentPollTimerInterval, FocusTracker.backgroundPollInterval)
+
+            model.setTracksGeometryClosely(true, reason: "suggestion")
+            XCTAssertEqual(model.currentPollTimerInterval ?? 0, 0.15, accuracy: 0.0001)
+
+            model.setTracksGeometryClosely(true, reason: "other")
+            model.setTracksGeometryClosely(false, reason: "suggestion")
+            XCTAssertEqual(model.currentPollTimerInterval ?? 0, 0.15, accuracy: 0.0001)
+
+            model.setTracksGeometryClosely(false, reason: "other")
+            XCTAssertEqual(model.currentPollTimerInterval, FocusTracker.backgroundPollInterval)
         }
     }
 }

@@ -107,11 +107,14 @@ final class CotabbyAppEnvironment {
                 )
             }
         )
-        // A click may move focus to another field, so the poll returns to its base cadence (the
-        // next capture within one interval) instead of an idle-stretched one of up to ten.
+        // A click may move focus or the caret, and its release may end a window move or a text
+        // selection; the focus tracker re-reads shortly after each instead of polling fast.
         inputMonitor.onPointerDown = { [weak calendarAccessibilityCaptureGuard, weak focusModel] point in
             calendarAccessibilityCaptureGuard?.handlePointerDown(atAccessibilityPoint: point)
-            focusModel?.noteUserActivity()
+            focusModel?.noteFocusMayHaveChanged()
+        }
+        inputMonitor.onPointerUp = { [weak focusModel] in
+            focusModel?.noteFocusMayHaveChanged()
         }
         // The snapshot is poll-based, so after a fast app switch the closure may briefly
         // evaluate against the previous app's identity until the next AX poll fires. This

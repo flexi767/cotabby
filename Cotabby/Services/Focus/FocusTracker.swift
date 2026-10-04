@@ -3,12 +3,18 @@ import Foundation
 import Logging
 
 /// File overview:
-/// Polls the Accessibility tree on a fixed timer and publishes the latest `FocusSnapshot`.
+/// Reads the focused element from the Accessibility tree and publishes the latest `FocusSnapshot`.
 ///
-/// Polling is intentionally the only focus-change source. AXObserver delivery is inconsistent in
-/// several host apps, and a hybrid push/poll design creates ordering ambiguity. A single polling
-/// loop gives Cotabby predictable eventual consistency: every tick re-reads the current frontmost
-/// focused element and repairs stale state within one poll interval.
+/// Every snapshot comes from the same full capture. What decides *when* to capture: keystrokes and
+/// other subsystems (`refreshNow`), hints that focus may have moved (`FocusEventSource`: app
+/// activation and the frontmost app's focus and window notifications; clicks via
+/// `noteFocusMayHaveChanged`), and a timer. Hints carry no state, so their uneven delivery across
+/// host apps cannot leave a wrong snapshot; it only decides how soon the next capture runs.
+///
+/// The timer runs at the configured poll interval only while something on screen follows the field
+/// (`setTracksGeometryClosely`, e.g. a visible suggestion that must move when the page scrolls).
+/// Otherwise it is a backup at `backgroundPollInterval` for apps that post no notifications, and
+/// every tick still re-reads the frontmost focused element and repairs stale state.
 @MainActor
 final class FocusTracker {
     var onSnapshotChange: ((FocusSnapshot) -> Void)?
@@ -51,6 +57,22 @@ final class FocusTracker {
     // even with no focus change and the user's hands off the keyboard. The transitions live in the
     // pure `FocusPollBackoff` so they can be unit-tested without a live timer.
     private var backoff = FocusPollBackoff()
+
+    /// The backup poll while nothing on screen follows the field: focus changes arrive as hints
+    /// (app switches, AX notifications, clicks, keystrokes), so the timer only repairs what an app
+    /// failed to announce.
+    static let backgroundPollInterval: TimeInterval = 1.0
+    /// Delay before answering an AX or activation hint: bursts (a window opening posts several)
+    /// fold into one capture.
+    static let eventCaptureDelay: TimeInterval = 0.03
+    /// Delay after a click: the click reaches Cotabby before the host app moves focus.
+    static let pointerCaptureDelay: TimeInterval = 0.05
+
+    private let eventSource = FocusEventSource()
+    private var eventCapturePending = false
+    /// Why the field's geometry is being followed closely; the poll runs at `pollInterval` while
+    /// this is non-empty.
+    private var closeTrackingReasons: Set<String> = []
 
     // Cached element resolved via cursor hit-testing for Chromium OOPIF editors (e.g. Gmail
     // compose) that the system-wide focused-element query cannot see. Re-validated each tick via
@@ -108,6 +130,10 @@ final class FocusTracker {
         // resulting effective interval.
         refreshNow()
         scheduleTimer()
+        eventSource.onEvent = { [weak self] in
+            self?.requestCapture(after: Self.eventCaptureDelay)
+        }
+        eventSource.start(permissionGranted: permissionProvider)
     }
 
     /// Stops polling while leaving the most recent snapshot available to callers.
@@ -116,12 +142,43 @@ final class FocusTracker {
         timer?.invalidate()
         timer = nil
         scheduledInterval = nil
+        eventSource.stop()
+        eventSource.onEvent = nil
+        eventCapturePending = false
     }
 
     /// The interval the poll timer should currently run at: the base interval stretched by idle
-    /// backoff. While the user is active the stride is 1, so this is just `pollInterval`.
+    /// backoff (while the user is active the stride is 1, so this is just `pollInterval`), and no
+    /// shorter than the backup interval while nothing follows the field.
     private func effectiveInterval() -> TimeInterval {
-        pollInterval * Double(backoff.captureStride)
+        let stretched = pollInterval * Double(backoff.captureStride)
+        return closeTrackingReasons.isEmpty ? max(Self.backgroundPollInterval, stretched) : stretched
+    }
+
+    /// The interval the poll timer is armed with, for tests.
+    var currentTimerInterval: TimeInterval? { scheduledInterval }
+
+    /// Follows the field at the full poll rate while `on` for `reason` (several reasons may hold at
+    /// once); with none left, the poll falls back to the backup interval.
+    func setTracksGeometryClosely(_ on: Bool, reason: String) {
+        let changed = on ? closeTrackingReasons.insert(reason).inserted : closeTrackingReasons.remove(reason) != nil
+        guard changed else { return }
+        rescheduleTimerIfIntervalChanged()
+    }
+
+    /// Captures once after `delay`, folding requests made while one is pending into it. Used for
+    /// hints that focus may have moved; does nothing while polling is stopped.
+    func requestCapture(after delay: TimeInterval) {
+        guard timer != nil, !eventCapturePending else { return }
+        eventCapturePending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.eventCapturePending else { return }
+                self.eventCapturePending = false
+                guard self.timer != nil else { return }
+                self.refreshNow()
+            }
+        }
     }
 
     /// Creates (or replaces) the poll timer at the current effective interval. Each fire performs
@@ -180,12 +237,10 @@ final class FocusTracker {
         rescheduleTimerIfIntervalChanged()
     }
 
-    /// Resets idle backoff without capturing, so the next capture comes within one base interval.
-    /// The timer is re-armed only when backoff had stretched it, so a click during active use costs
-    /// nothing.
-    func noteUserActivity() {
-        backoff.reset()
-        rescheduleTimerIfIntervalChanged()
+    /// A click (press or release) may have moved focus or the caret; captures once the host app
+    /// has had time to act on it.
+    func noteFocusMayHaveChanged() {
+        requestCapture(after: Self.pointerCaptureDelay)
     }
 
     /// Drops resolver caches whose contents Cotabby just made stale by mutating the focused field

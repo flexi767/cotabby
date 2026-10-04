@@ -57,6 +57,10 @@ final class InputMonitor {
     /// date/time disclosure click. No pointer event is consumed or modified.
     var onPointerDown: (@MainActor (CGPoint) -> Void)?
 
+    /// Reports a physical left-button release (the end of a click, a text selection drag, or a
+    /// window move or resize), so the focus tracker can re-read the field once the host has acted.
+    var onPointerUp: (@MainActor () -> Void)?
+
     /// While an emoji capture session is active, the picker controller decides per key whether the
     /// active tap should swallow it (navigation, Return/Tab, Escape) or let it reach the field
     /// (query characters). `.notHandled` means no capture is active, so the accept tap falls through
@@ -266,6 +270,7 @@ final class InputMonitor {
         let mask = (1 << CGEventType.keyDown.rawValue)
             | (1 << CGEventType.leftMouseDown.rawValue)
             | (1 << CGEventType.rightMouseDown.rawValue)
+            | (1 << CGEventType.leftMouseUp.rawValue)
         let callback: CGEventTapCallBack = { _, type, event, userInfo in
             guard let userInfo else {
                 return Unmanaged.passUnretained(event)
@@ -528,6 +533,10 @@ final class InputMonitor {
 
         case .leftMouseDown, .rightMouseDown:
             handleObserverPointerDown(at: event.location)
+            return Unmanaged.passUnretained(event)
+
+        case .leftMouseUp:
+            onPointerUp?()
             return Unmanaged.passUnretained(event)
 
         default:

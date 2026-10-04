@@ -78,6 +78,13 @@ final class RigFocusProvider: SuggestionFocusProviding {
     func invalidateTransientCaretCaches() {
         transientCaretCacheInvalidations += 1
     }
+
+    /// Reasons the coordinator currently asks for close geometry tracking.
+    private(set) var closeTrackingReasons: Set<String> = []
+
+    func setTracksGeometryClosely(_ on: Bool, reason: String) {
+        if on { closeTrackingReasons.insert(reason) } else { closeTrackingReasons.remove(reason) }
+    }
 }
 
 @MainActor
