@@ -6,14 +6,15 @@ import Foundation
 /// sit beside "Mijn offerte" as soon as the page is in front, without the writer clicking a field.
 ///
 /// The focus tracker only describes the focused text field, which is why this is its own small
-/// watcher. It runs only while a Chromium browser is the frontmost app (app switches are observed,
-/// so no timer runs at all elsewhere): about once a second it asks the browser for its focused window and, only
+/// watcher. It runs only while Opera is the frontmost app, the browser the portal is used in (app
+/// switches are observed, so no timer runs at all elsewhere, Chrome and other browsers included):
+/// about once a second it asks Opera for its focused window and, only
 /// when that window's title names Informex, finds the page (its web area), checks the page address
 /// (`VATCounterpartRule.applies`: the portal host and the `/auction` path), finds the "Mijn offerte"
 /// field (DOM id `bidI`) and reads the vehicle (`InformexVehicle`). The page walk runs once per page;
 /// afterwards each 0.15 s tick reads only the field's position (one attribute read); the address is
 /// re-checked about once a second and the visible area is recomputed only when the field moves.
-/// Other pages in the browser cost one title read a second; other apps cost nothing.
+/// Other pages in Opera cost one title read a second; other apps cost nothing.
 ///
 /// Owned by `CotabbyAppEnvironment`, started by `AppDelegate`, which forwards each change to
 /// `VehicleSearchOverlayController`. Reads only; it never writes to the page.
@@ -96,10 +97,10 @@ final class InformexPageWatcher {
         publish(nil)
     }
 
-    /// Runs the timer only while a Chromium browser is in front; anywhere else the buttons cannot
-    /// apply, so nothing is polled and the timer does not wake the app.
+    /// Runs the timer only while Opera is in front; anywhere else the buttons are not wanted, so
+    /// nothing is polled and the timer does not wake the app.
     private func updateTimerForFrontmostApp() {
-        let browserInFront = BrowserAppDetector.isChromiumBrowser(
+        let browserInFront = BrowserAppDetector.isOpera(
             bundleIdentifier: NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         )
         guard browserInFront else {
@@ -144,7 +145,7 @@ final class InformexPageWatcher {
 
     private func currentPlacement() -> Placement? {
         guard let app = NSWorkspace.shared.frontmostApplication,
-              BrowserAppDetector.isChromiumBrowser(bundleIdentifier: app.bundleIdentifier) else {
+              BrowserAppDetector.isOpera(bundleIdentifier: app.bundleIdentifier) else {
             page = nil
             return nil
         }

@@ -32,6 +32,13 @@ final class BrowserAppDetectorTests: XCTestCase {
         XCTAssertFalse(BrowserAppDetector.isChromiumBrowser(bundleIdentifier: "org.mozilla.firefox"))
     }
 
+    func testOperaMatchesEveryOperaChannelAndNoOtherBrowser() {
+        XCTAssertTrue(BrowserAppDetector.isOpera(bundleIdentifier: "com.operasoftware.Opera"))
+        XCTAssertTrue(BrowserAppDetector.isOpera(bundleIdentifier: "com.operasoftware.OperaGX"))
+        XCTAssertFalse(BrowserAppDetector.isOpera(bundleIdentifier: "com.google.Chrome"))
+        XCTAssertFalse(BrowserAppDetector.isOpera(bundleIdentifier: nil))
+    }
+
     func testElectronEditorAllowlist() {
         XCTAssertTrue(BrowserAppDetector.isElectronEditor(bundleIdentifier: "com.clickup.desktop-app"))
         // VS Code ships under the mixed-case `com.microsoft.VSCode`; matching must be case-insensitive

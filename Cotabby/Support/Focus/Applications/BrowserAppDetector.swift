@@ -80,6 +80,12 @@ nonisolated enum BrowserAppDetector {
         hasMatchingPrefix(bundleIdentifier, in: chromiumBundlePrefixes)
     }
 
+    /// Opera (any channel: Opera, Opera GX, beta, developer). The Informex vehicle-search watcher
+    /// runs only there, the browser the portal is used in.
+    static func isOpera(bundleIdentifier: String?) -> Bool {
+        hasMatchingPrefix(bundleIdentifier, in: ["com.operasoftware.opera"])
+    }
+
     /// Is this a named Electron editor we intentionally cover? Case-insensitive because macOS bundle
     /// ids are case-insensitive in practice and VS Code's is mixed-case (`com.microsoft.VSCode`); a
     /// case-sensitive exact match here was the reason VS Code resolved no focus and got no suggestions.
