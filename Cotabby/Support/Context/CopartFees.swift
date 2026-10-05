@@ -91,7 +91,8 @@ nonisolated enum CopartFees {
         return !(value.isEmpty || value == "-" || value.hasPrefix("keine") || value.hasPrefix("nein"))
     }
 
-    /// "1.017 €", or "1.017,50 €" when there are cents.
+    /// "1.017€", or "1.017,50€" when there are cents (no space before the sign: the writer's choice,
+    /// it keeps the panel short).
     static func format(_ amount: Decimal) -> String {
         let formatter = NumberFormatter()
         formatter.locale = Locale(identifier: "de_DE")
@@ -99,7 +100,7 @@ nonisolated enum CopartFees {
         let hasCents = amount != rounded(amount, scale: 0)
         formatter.minimumFractionDigits = hasCents ? 2 : 0
         formatter.maximumFractionDigits = 2
-        return (formatter.string(from: amount as NSDecimalNumber) ?? "\(amount)") + " €"
+        return (formatter.string(from: amount as NSDecimalNumber) ?? "\(amount)") + "€"
     }
 
     private static func rounded(_ value: Decimal, scale: Int = 2) -> Decimal {

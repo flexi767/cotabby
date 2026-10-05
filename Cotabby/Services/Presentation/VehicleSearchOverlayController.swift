@@ -137,10 +137,10 @@ final class VehicleSearchOverlayController: NSObject {
         return button
     }
 
-    /// "Gebühren 855 € · Gesamt 13.355 €", net like Copart's bids; the parts in the tooltip.
+    /// "855€ · 13.355€": the total fee, then the total price, net like Copart's bids; the parts in
+    /// the tooltip.
     private func feeLabel(_ fees: CopartFees.Breakdown) -> NSView {
-        let label = NSTextField(labelWithString:
-            "Gebühren \(CopartFees.format(fees.fees)) · Gesamt \(CopartFees.format(fees.total))")
+        let label = NSTextField(labelWithString: "\(CopartFees.format(fees.fees)) · \(CopartFees.format(fees.total))")
         label.font = .monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
         label.textColor = .labelColor
         var parts = [

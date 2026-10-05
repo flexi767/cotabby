@@ -48,7 +48,7 @@ final class CopartFeesTests: XCTestCase {
     }
 
     func testFormatsGermanEuros() {
-        XCTAssertEqual(CopartFees.format(1017), "1.017 €")
-        XCTAssertEqual(CopartFees.format(3612.5), "3.612,50 €")
+        XCTAssertEqual(CopartFees.format(1017), "1.017€")
+        XCTAssertEqual(CopartFees.format(3612.5), "3.612,50€")
     }
 }
