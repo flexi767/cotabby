@@ -52,6 +52,26 @@ final class AuctionVehicleTests: XCTestCase {
         XCTAssertFalse(AuctionVehicle.isCopartLotURL("https://notcopart.example.com/lot/1"))
     }
 
+    /// A board of the live auction dashboard, as measured (abridged): title, then details.
+    func testReadsADashboardBoard() {
+        let details = ["Standort", "Berlin", "Erstzulassungsdatum", "29/09/2025", "Tachostand", "46.745 km",
+                       "Dokumente", "ZB1, ZB2, Konformitätsbescheinigung"]
+        XCTAssertEqual(AuctionVehicle.parseCopartBoard(title: "2025 Toyota Corolla Touring Sports Hybrid Teamplayer",
+                                                       detailTexts: details),
+                       AuctionVehicle(make: "Toyota", model: "Corolla", firstRegistrationYear: 2025, source: .copart))
+        XCTAssertEqual(AuctionVehicle.parseCopartBoard(title: "2019 Land Rover Discovery Sport", detailTexts: [])?.make,
+                       "Land Rover")
+        XCTAssertEqual(AuctionVehicle.parseCopartBoard(title: "2024 Opel Movano C Kasten", detailTexts: [])?
+            .firstRegistrationYear, 2024, "no registration listed: the title's model year")
+        XCTAssertNil(AuctionVehicle.parseCopartBoard(title: "2024", detailTexts: []))
+    }
+
+    func testRecognizesTheAuctionDashboard() {
+        XCTAssertTrue(AuctionVehicle.isCopartDashboardURL("https://www.copart.de/auctionDashboard"))
+        XCTAssertTrue(AuctionVehicle.isCopartDashboardURL("https://www.copart.de/auctionDashboard?auctionDetails=x"))
+        XCTAssertFalse(AuctionVehicle.isCopartDashboardURL("https://www.copart.de/lot/50708766"))
+    }
+
     func testACopartLinkNamesItsSource() throws {
         let url = try XCTUnwrap(AuctionVehicle(make: "BMW", model: "i7", firstRegistrationYear: 2025, source: .copart)
             .searchURL(for: .mobileDE))

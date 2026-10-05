@@ -57,7 +57,7 @@ final class VehicleSearchOverlayController: NSObject {
         let panel = panel ?? makePanel()
         if lots != self.lots { rebuild(for: lots) }
         guard let stack else { return }
-        let size = stack.fittingSize
+        let size = stack.frame.size
         let origin = NSPoint(x: addressBarFrame.maxX - Self.insetFromBarEnd - size.width,
                              y: addressBarFrame.midY - size.height / 2)
         panel.setFrame(NSRect(origin: origin, size: size), display: true)
@@ -82,24 +82,25 @@ final class VehicleSearchOverlayController: NSObject {
         panel.isOpaque = false
         panel.hasShadow = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+        self.panel = panel
+        return panel
+    }
+
+    /// One group per vehicle, in page order: its fees (when known), then its two buttons. A fresh
+    /// stack each time: a reused one is measured against its previous frame, and a smaller earlier
+    /// panel then clipped the new content (measured: 48 pt wide, the fee label cut off).
+    private func rebuild(for lots: [AuctionLot]) {
+        self.lots = lots
+        buttons.removeAll()
         let stack = NSStackView()
         stack.orientation = .horizontal
         stack.spacing = Self.groupSpacing
         stack.alignment = .centerY
-        panel.contentView = stack
-        self.panel = panel
-        self.stack = stack
-        return panel
-    }
-
-    /// One group per vehicle, in page order: its fees (when known), then its two buttons.
-    private func rebuild(for lots: [AuctionLot]) {
-        self.lots = lots
-        buttons.removeAll()
-        guard let stack else { return }
-        stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        stack.setClippingResistancePriority(.required, for: .horizontal)
+        stack.setHuggingPriority(.required, for: .horizontal)
         for (index, lot) in lots.enumerated() {
             let group = NSStackView()
+            group.setClippingResistancePriority(.required, for: .horizontal)
             group.orientation = .horizontal
             group.spacing = Self.spacing
             group.alignment = .centerY
@@ -109,6 +110,10 @@ final class VehicleSearchOverlayController: NSObject {
             }
             stack.addArrangedSubview(group)
         }
+        stack.layoutSubtreeIfNeeded()
+        stack.setFrameSize(stack.fittingSize)
+        panel?.contentView = stack
+        self.stack = stack
     }
 
     private func searchButton(target: AuctionVehicle.SearchTarget, vehicleIndex: Int) -> NSButton {

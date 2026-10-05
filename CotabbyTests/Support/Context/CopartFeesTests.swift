@@ -44,6 +44,7 @@ final class CopartFeesTests: XCTestCase {
         XCTAssertTrue(CopartFees.listsDocuments(pageTexts: ["Fahrzeugdokumente:", "ZB1 , ZB2 , COC (P)"]))
         XCTAssertFalse(CopartFees.listsDocuments(pageTexts: ["Fahrzeugdokumente:", "Keine"]))
         XCTAssertTrue(CopartFees.listsDocuments(pageTexts: ["Kilometerstand:", "43.184 Km"]))
+        XCTAssertTrue(CopartFees.listsDocuments(pageTexts: ["Dokumente", "ZB1, ZB2, Konformitätsbescheinigung"]))
     }
 
     func testFormatsGermanEuros() {

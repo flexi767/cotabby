@@ -81,11 +81,11 @@ nonisolated enum CopartFees {
         return Decimal(string: cents.isEmpty ? whole : "\(whole).\(cents)")
     }
 
-    /// True unless the lot's "Fahrzeugdokumente" says it has none.
+    /// True unless the lot's "Fahrzeugdokumente" (a dashboard board's "Dokumente") says it has none.
     static func listsDocuments(pageTexts: [String]) -> Bool {
         let texts = pageTexts.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         guard let index = texts.firstIndex(where: {
-            $0.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ": ")) == "fahrzeugdokumente"
+            ["fahrzeugdokumente", "dokumente"].contains($0.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ": ")))
         }), index + 1 < texts.count else { return true }
         let value = texts[index + 1].lowercased()
         return !(value.isEmpty || value == "-" || value.hasPrefix("keine") || value.hasPrefix("nein"))

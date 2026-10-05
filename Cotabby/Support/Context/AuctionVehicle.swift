@@ -42,7 +42,13 @@ nonisolated struct AuctionVehicle: Equatable, Sendable {
         "make": ["hersteller", "marke", "make"],
         "model": ["modell", "model"],
         "year": ["jahr", "year"],
-        "firstRegistration": ["erstzulassung", "first registration", "registration date"],
+        "firstRegistration": ["erstzulassung", "erstzulassungsdatum", "first registration", "registration date"],
+    ]
+
+    /// Makes whose name is two words in a Copart title ("2019 Land Rover Discovery ..."); any other
+    /// make is the title's first word after the year.
+    private static let twoWordMakes: Set<String> = [
+        "land rover", "alfa romeo", "aston martin", "rolls royce", "lynk &", "great wall",
     ]
 
     /// The vehicle on an Informex offer page, or nil when the page names no make.
@@ -60,6 +66,35 @@ nonisolated struct AuctionVehicle: Equatable, Sendable {
         let year = values["firstRegistration"].flatMap(year) ?? values["year"].flatMap(year)
         return AuctionVehicle(make: make, model: values["model"].flatMap(nonEmpty), firstRegistrationYear: year,
                               source: .copart)
+    }
+
+    /// The car on one board of Copart's live auction dashboard, which shows a title ("2025 Toyota
+    /// Corolla Touring Sports Hybrid Teamplayer") and a details list with
+    /// "Erstzulassungsdatum" "29/09/2025" but no make or model fields: the make is the title's
+    /// first word after the year (two for `twoWordMakes`), the model the word after it. The year is
+    /// the first registration's, else the title's model year.
+    static func parseCopartBoard(title: String, detailTexts: [String]) -> AuctionVehicle? {
+        var words = title.split(whereSeparator: \.isWhitespace).map(String.init)
+        var titleYear: Int?
+        if let first = words.first, first.count == 4, let year = Int(first), year > 1900 {
+            titleYear = year
+            words.removeFirst()
+        }
+        guard !words.isEmpty else { return nil }
+        let makeLength = words.count > 1 && twoWordMakes.contains("\(words[0]) \(words[1])".lowercased()) ? 2 : 1
+        let make = words.prefix(makeLength).joined(separator: " ")
+        let model = words.count > makeLength ? words[makeLength] : nil
+        let values = labeledValues(in: detailTexts, labels: copartLabels)
+        return AuctionVehicle(make: make, model: model,
+                              firstRegistrationYear: values["firstRegistration"].flatMap(year) ?? titleYear,
+                              source: .copart)
+    }
+
+    /// True for Copart's live auction dashboard (`copart.<tld>/auctionDashboard`).
+    static func isCopartDashboardURL(_ urlString: String) -> Bool {
+        guard let url = URL(string: urlString), let host = url.host?.lowercased(),
+              host.split(separator: ".").contains("copart") else { return false }
+        return url.path.lowercased().hasPrefix("/auctiondashboard")
     }
 
     /// True for a Copart lot page (any Copart country site): the host is copart.<tld> or a

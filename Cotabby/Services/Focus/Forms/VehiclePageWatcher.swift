@@ -4,7 +4,8 @@ import Foundation
 
 /// Watches Opera for an auction page with a vehicle on it, so the vehicle search buttons (and, on
 /// Copart, the fees and total for the current bid) can sit in Opera's address bar while the page is
-/// in front. Two pages (`PageKind`): the Informex offer page and a Copart lot page.
+/// in front. Three pages (`PageKind`): the Informex offer page, a Copart lot page, and Copart's live
+/// auction dashboard, where each joined board's car gets its own set.
 ///
 /// The panel sits in the address bar rather than on the page: it never covers what the writer is
 /// reading, and it does not move when the page scrolls, so nothing has to follow the page.
@@ -34,12 +35,15 @@ final class VehiclePageWatcher {
     enum PageKind: CaseIterable {
         case informex
         case copart
+        /// Copart's live auction dashboard: one car per joined board (`CopartDashboardReader`).
+        case copartDashboard
 
-        /// Matched in the window title (case-insensitive) before any page walk.
+        /// Matched in the window title (case-insensitive) before any page walk. Both Copart pages
+        /// match "copart"; the address then decides which one it is.
         var titleKeyword: String {
             switch self {
             case .informex: "informex"
-            case .copart: "copart"
+            case .copart, .copartDashboard: "copart"
             }
         }
 
@@ -47,13 +51,16 @@ final class VehiclePageWatcher {
             switch self {
             case .informex: VATCounterpartRule.applies(toURL: url)
             case .copart: AuctionVehicle.isCopartLotURL(url)
+            case .copartDashboard: AuctionVehicle.isCopartDashboardURL(url)
             }
         }
 
+        /// The page's one vehicle; nil for the dashboard, whose cars change while it is open.
         func vehicle(in texts: [String]) -> AuctionVehicle? {
             switch self {
             case .informex: AuctionVehicle.parse(pageTexts: texts)
             case .copart: AuctionVehicle.parseCopart(pageTexts: texts)
+            case .copartDashboard: nil
             }
         }
     }
@@ -66,6 +73,7 @@ final class VehiclePageWatcher {
     private var lastPlacement: Placement?
     private var activationObserver: NSObjectProtocol?
     private var page: CachedPage?
+    private let dashboardReader = CopartDashboardReader()
 
     private struct CachedPage {
         let kind: PageKind
@@ -73,7 +81,8 @@ final class VehiclePageWatcher {
         let window: AXUIElement
         let webArea: AXUIElement
         let url: String
-        let vehicle: AuctionVehicle
+        /// The page's vehicle; nil on the dashboard (`dashboardReader` reads its boards).
+        let vehicle: AuctionVehicle?
         /// The address bar (its frame places the panel) and the text field inside it (focused while
         /// the writer types an address: the panel then steps aside).
         let addressBar: AXUIElement
@@ -165,15 +174,19 @@ final class VehiclePageWatcher {
         let pid = app.processIdentifier
         let appElement = AXUIElementCreateApplication(pid)
         guard let window = Self.element(kAXFocusedWindowAttribute as CFString, on: appElement),
-              let title = AXHelper.stringValue(for: kAXTitleAttribute as CFString, on: window),
-              let kind = PageKind.allCases.first(where: { title.localizedCaseInsensitiveContains($0.titleKeyword) })
+              let title = AXHelper.stringValue(for: kAXTitleAttribute as CFString, on: window)
         else {
+            page = nil
+            return nil
+        }
+        let titleKinds = PageKind.allCases.filter { title.localizedCaseInsensitiveContains($0.titleKeyword) }
+        guard !titleKinds.isEmpty else {
             page = nil
             return nil
         }
 
         // The same page in the same window as last tick: no walk (save a missing Copart bid's).
-        if var cached = page, cached.kind == kind, cached.processIdentifier == pid, CFEqual(cached.window, window),
+        if var cached = page, titleKinds.contains(cached.kind), cached.processIdentifier == pid, CFEqual(cached.window, window),
            Self.url(of: cached.webArea) == cached.url {
             if cached.kind == .copart, cached.bidText == nil {
                 cached.ticksUntilBidSearch -= 1
@@ -188,12 +201,14 @@ final class VehiclePageWatcher {
         }
 
         page = nil
+        dashboardReader.reset()
         guard let webArea = Self.firstDescendant(of: window, limit: 3000, where: { node in
             AXHelper.stringValue(for: kAXRoleAttribute as CFString, on: node) == "AXWebArea"
-        }), let url = Self.url(of: webArea), kind.applies(toURL: url),
+        }), let url = Self.url(of: webArea), let kind = titleKinds.first(where: { $0.applies(toURL: url) }),
               let (addressBar, addressField) = Self.addressBar(in: window) else { return nil }
-        let texts = Self.texts(in: webArea)
-        guard let vehicle = kind.vehicle(in: texts) else { return nil }
+        let texts = kind == .copartDashboard ? [] : Self.texts(in: webArea)
+        let vehicle = kind.vehicle(in: texts)
+        guard vehicle != nil || kind == .copartDashboard else { return nil }
         let bidText = kind == .copart ? Self.copartBidText(in: webArea) : nil
         var cached = CachedPage(kind: kind, processIdentifier: pid, window: window, webArea: webArea, url: url,
                                 vehicle: vehicle, addressBar: addressBar, addressField: addressField,
@@ -217,8 +232,10 @@ final class VehiclePageWatcher {
                 page.bidText = nil  // re-rendered: look for it again
             }
         }
-        return Placement(lots: [AuctionLot(vehicle: page.vehicle, fees: fees)],
-                         addressBarFrame: AXHelper.cocoaRect(fromAccessibilityRect: bar),
+        let lots = page.vehicle.map { [AuctionLot(vehicle: $0, fees: fees)] }
+            ?? dashboardReader.lots(in: page.webArea)
+        guard !lots.isEmpty else { return nil }
+        return Placement(lots: lots, addressBarFrame: AXHelper.cocoaRect(fromAccessibilityRect: bar),
                          browserBundleIdentifier: browser)
     }
 
