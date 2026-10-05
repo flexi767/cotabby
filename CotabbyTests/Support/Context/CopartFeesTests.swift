@@ -54,7 +54,7 @@ final class CopartFeesTests: XCTestCase {
         XCTAssertFalse(CopartFees.addsVAT(pageTexts: ["Kilometerstand:", "43.184 Km"]))
         let net = try XCTUnwrap(CopartFees.breakdown(salePrice: 2600, listsDocuments: true, addsVAT: true))
         XCTAssertEqual(net.total, 2998)
-        XCTAssertEqual(net.totalIncludingVAT, Decimal(string: "3567.62"))
+        XCTAssertEqual(net.totalIncludingVAT, 3568, "2998 x 1.19 = 3567.62, rounded to whole euros")
         XCTAssertNil(CopartFees.breakdown(salePrice: 2600, listsDocuments: true)?.totalIncludingVAT)
     }
 

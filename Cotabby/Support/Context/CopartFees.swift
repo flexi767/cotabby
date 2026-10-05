@@ -29,8 +29,11 @@ nonisolated enum CopartFees {
 
         var fees: Decimal { buyerFee + onlineBidFee + pickupFee + documentFee }
         var total: Decimal { salePrice + fees }
-        /// The total with 19% VAT on price and fees, for a lot sold plus VAT; nil otherwise.
-        var totalIncludingVAT: Decimal? { addsVAT ? CopartFees.rounded(total * (1 + CopartFees.vatRate)) : nil }
+        /// The total with 19% VAT on price and fees, in whole euros (the writer's choice: a guide
+        /// figure, not an invoice), for a lot sold plus VAT; nil otherwise.
+        var totalIncludingVAT: Decimal? {
+            addsVAT ? CopartFees.rounded(total * (1 + CopartFees.vatRate), scale: 0) : nil
+        }
     }
 
     /// German standard VAT, added to a net lot's price and to the fees.
