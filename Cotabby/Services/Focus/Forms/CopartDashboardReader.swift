@@ -28,6 +28,7 @@ final class CopartDashboardReader {
         var title = ""
         var vehicle: AuctionVehicle?
         var listsDocuments = true
+        var addsVAT = false
     }
 
     private var boards: [Board] = []
@@ -54,7 +55,7 @@ final class CopartDashboardReader {
         return boards.compactMap { board in
             guard let vehicle = board.vehicle else { return nil }
             let fees = board.bidBox.flatMap(Self.bid(in:))
-                .flatMap { CopartFees.breakdown(salePrice: $0, listsDocuments: board.listsDocuments) }
+                .flatMap { CopartFees.breakdown(salePrice: $0, listsDocuments: board.listsDocuments, addsVAT: board.addsVAT) }
             return AuctionLot(vehicle: vehicle, fees: fees)
         }
     }
@@ -71,6 +72,7 @@ final class CopartDashboardReader {
             boards[index].title = title
             boards[index].vehicle = AuctionVehicle.parseCopartBoard(title: title, detailTexts: details)
             boards[index].listsDocuments = CopartFees.listsDocuments(pageTexts: details)
+            boards[index].addsVAT = CopartFees.addsVAT(pageTexts: details)
         }
         return true
     }

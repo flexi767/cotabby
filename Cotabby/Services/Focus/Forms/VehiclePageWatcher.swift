@@ -93,6 +93,11 @@ final class VehiclePageWatcher {
         var bidText: AXUIElement?
         var ticksUntilBidSearch = 0
         let listsDocuments: Bool
+        let addsVAT: Bool
+        /// The window title when the page was found. A tab switch changes it; the address alone does
+        /// not show one, because the previous tab's page element keeps answering with its own address
+        /// (measured: the dashboard's stayed "current" after switching to a lot tab).
+        let title: String
     }
 
     /// Ticks between searches for a Copart bid element that is missing (one bounded page walk).
@@ -187,7 +192,7 @@ final class VehiclePageWatcher {
 
         // The same page in the same window as last tick: no walk (save a missing Copart bid's).
         if var cached = page, titleKinds.contains(cached.kind), cached.processIdentifier == pid, CFEqual(cached.window, window),
-           Self.url(of: cached.webArea) == cached.url {
+           cached.title == title, Self.url(of: cached.webArea) == cached.url {
             if cached.kind == .copart, cached.bidText == nil {
                 cached.ticksUntilBidSearch -= 1
                 if cached.ticksUntilBidSearch <= 0 {
@@ -213,7 +218,8 @@ final class VehiclePageWatcher {
         var cached = CachedPage(kind: kind, processIdentifier: pid, window: window, webArea: webArea, url: url,
                                 vehicle: vehicle, addressBar: addressBar, addressField: addressField,
                                 bidText: bidText, ticksUntilBidSearch: Self.ticksPerBidSearch,
-                                listsDocuments: CopartFees.listsDocuments(pageTexts: texts))
+                                listsDocuments: CopartFees.listsDocuments(pageTexts: texts),
+                                addsVAT: CopartFees.addsVAT(pageTexts: texts), title: title)
         let result = placement(for: &cached, browser: app.bundleIdentifier)
         page = cached
         return result
@@ -227,7 +233,8 @@ final class VehiclePageWatcher {
         if let bidText = page.bidText {
             if let text = AXHelper.stringValue(for: kAXValueAttribute as CFString, on: bidText) {
                 fees = CopartFees.amount(fromBidText: text)
-                    .flatMap { CopartFees.breakdown(salePrice: $0, listsDocuments: page.listsDocuments) }
+                    .flatMap { CopartFees.breakdown(salePrice: $0, listsDocuments: page.listsDocuments,
+                                                    addsVAT: page.addsVAT) }
             } else {
                 page.bidText = nil  // re-rendered: look for it again
             }

@@ -47,6 +47,17 @@ final class CopartFeesTests: XCTestCase {
         XCTAssertTrue(CopartFees.listsDocuments(pageTexts: ["Dokumente", "ZB1, ZB2, Konformitätsbescheinigung"]))
     }
 
+    func testALotSoldPlusVATGetsATotalIncludingVAT() throws {
+        XCTAssertTrue(CopartFees.addsVAT(pageTexts: ["Verkauf zzgl. MwSt.:", "Ja"]))
+        XCTAssertTrue(CopartFees.addsVAT(pageTexts: ["Verkauf zzgl. MwSt.", "Ja"]))
+        XCTAssertFalse(CopartFees.addsVAT(pageTexts: ["Verkauf zzgl. MwSt.:", "Nein"]))
+        XCTAssertFalse(CopartFees.addsVAT(pageTexts: ["Kilometerstand:", "43.184 Km"]))
+        let net = try XCTUnwrap(CopartFees.breakdown(salePrice: 2600, listsDocuments: true, addsVAT: true))
+        XCTAssertEqual(net.total, 2998)
+        XCTAssertEqual(net.totalIncludingVAT, Decimal(string: "3567.62"))
+        XCTAssertNil(CopartFees.breakdown(salePrice: 2600, listsDocuments: true)?.totalIncludingVAT)
+    }
+
     func testFormatsGermanEuros() {
         XCTAssertEqual(CopartFees.format(1017), "1.017€")
         XCTAssertEqual(CopartFees.format(3612.5), "3.612,50€")

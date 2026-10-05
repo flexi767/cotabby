@@ -24,9 +24,17 @@ nonisolated enum CopartFees {
         let pickupFee: Decimal
         let documentFee: Decimal
 
+        /// True for a lot sold plus VAT ("Verkauf zzgl. MwSt.: Ja"): its prices are net.
+        var addsVAT = false
+
         var fees: Decimal { buyerFee + onlineBidFee + pickupFee + documentFee }
         var total: Decimal { salePrice + fees }
+        /// The total with 19% VAT on price and fees, for a lot sold plus VAT; nil otherwise.
+        var totalIncludingVAT: Decimal? { addsVAT ? CopartFees.rounded(total * (1 + CopartFees.vatRate)) : nil }
     }
+
+    /// German standard VAT, added to a net lot's price and to the fees.
+    static let vatRate: Decimal = 0.19
 
     /// Buyer fee steps: from this net sale price (inclusive) up to the next step, this fee.
     private static let buyerFeeSteps: [(from: Decimal, fee: Decimal)] = [
@@ -56,11 +64,21 @@ nonisolated enum CopartFees {
     }
 
     /// The fees for buying at `salePrice` (net), or nil for no price.
-    static func breakdown(salePrice: Decimal, listsDocuments: Bool) -> Breakdown? {
+    static func breakdown(salePrice: Decimal, listsDocuments: Bool, addsVAT: Bool = false) -> Breakdown? {
         guard salePrice > 0 else { return nil }
         return Breakdown(salePrice: salePrice, buyerFee: buyerFee(salePrice: salePrice),
                          onlineBidFee: onlineBidFee(salePrice: salePrice), pickupFee: pickupFee,
-                         documentFee: listsDocuments ? documentFee : 0)
+                         documentFee: listsDocuments ? documentFee : 0, addsVAT: addsVAT)
+    }
+
+    /// True when the lot says it is sold plus VAT ("Verkauf zzgl. MwSt.:" "Ja", on a lot page and a
+    /// dashboard board alike).
+    static func addsVAT(pageTexts: [String]) -> Bool {
+        let texts = pageTexts.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        guard let index = texts.firstIndex(where: {
+            $0.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ":. ")) == "verkauf zzgl. mwst"
+        }), index + 1 < texts.count else { return false }
+        return texts[index + 1].lowercased().hasPrefix("ja")
     }
 
     /// The amount in a bid as the page shows it ("€12.500", "12.500 €", "€1.234,50"), or nil when it
@@ -103,7 +121,7 @@ nonisolated enum CopartFees {
         return (formatter.string(from: amount as NSDecimalNumber) ?? "\(amount)") + "€"
     }
 
-    private static func rounded(_ value: Decimal, scale: Int = 2) -> Decimal {
+    static func rounded(_ value: Decimal, scale: Int = 2) -> Decimal {
         var input = value
         var result = Decimal()
         NSDecimalRound(&result, &input, scale, .plain)

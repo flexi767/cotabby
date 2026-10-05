@@ -137,10 +137,12 @@ final class VehicleSearchOverlayController: NSObject {
         return button
     }
 
-    /// "855€ · 13.355€": the total fee, then the total price, net like Copart's bids; the parts in
-    /// the tooltip.
+    /// "855€ · 13.355€": the total fee, then the total price, net like Copart's bids; for a lot sold
+    /// plus VAT a third number, the total price with VAT ("· 15.892€"). The parts are in the tooltip.
     private func feeLabel(_ fees: CopartFees.Breakdown) -> NSView {
-        let label = NSTextField(labelWithString: "\(CopartFees.format(fees.fees)) · \(CopartFees.format(fees.total))")
+        var numbers = [CopartFees.format(fees.fees), CopartFees.format(fees.total)]
+        if let gross = fees.totalIncludingVAT { numbers.append(CopartFees.format(gross)) }
+        let label = NSTextField(labelWithString: numbers.joined(separator: " · "))
         label.font = .monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
         label.textColor = .labelColor
         var parts = [
@@ -150,7 +152,10 @@ final class VehicleSearchOverlayController: NSObject {
             "Bereitstellungsgebühr \(CopartFees.format(fees.pickupFee))",
         ]
         if fees.documentFee > 0 { parts.append("Dokumentengebühr \(CopartFees.format(fees.documentFee))") }
-        parts.append("Alle Beträge netto (Copart, Stand Januar 2025)")
+        if let gross = fees.totalIncludingVAT {
+            parts.append("Gesamt inkl. 19% MwSt. \(CopartFees.format(gross)) (Verkauf zzgl. MwSt.)")
+        }
+        parts.append("Gebühren netto (Copart, Stand Januar 2025)")
         let pill = NSView()
         pill.wantsLayer = true
         pill.layer?.cornerRadius = 5
