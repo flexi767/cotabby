@@ -1,7 +1,7 @@
 @testable import Cotabby
 import XCTest
 
-final class InformexVehicleTests: XCTestCase {
+final class AuctionVehicleTests: XCTestCase {
     /// The page text in reading order, as measured on the live offer page (abridged).
     private let livePage = [
         "Informex Vehicle Online", "Aanvraag offertes", "SY9523", "AUDI Q6 e-tron (2024)", "Nr Informex", "3266676",
@@ -11,23 +11,56 @@ final class InformexVehicleTests: XCTestCase {
     ]
 
     func testReadsTheExpertVehicleData() {
-        XCTAssertEqual(InformexVehicle.parse(pageTexts: livePage),
-                       InformexVehicle(make: "AUDI", model: "Q6 e-tron", firstRegistrationYear: 2025))
+        XCTAssertEqual(AuctionVehicle.parse(pageTexts: livePage),
+                       AuctionVehicle(make: "AUDI", model: "Q6 e-tron", firstRegistrationYear: 2025))
     }
 
     func testFallsBackToTheModelWithoutItsYearAndReadsFrenchLabels() {
         let french = ["Marque", "BMW", "Modèle", "320d Touring (2019)", "1ère immat", "14/03/2019"]
-        XCTAssertEqual(InformexVehicle.parse(pageTexts: french),
-                       InformexVehicle(make: "BMW", model: "320d Touring", firstRegistrationYear: 2019))
+        XCTAssertEqual(AuctionVehicle.parse(pageTexts: french),
+                       AuctionVehicle(make: "BMW", model: "320d Touring", firstRegistrationYear: 2019))
     }
 
     func testNoMakeNoVehicle() {
-        XCTAssertNil(InformexVehicle.parse(pageTexts: ["Model", "Q6", "Eerste inschr", "2025"]))
-        XCTAssertNil(InformexVehicle.parse(pageTexts: ["Merk", "Model", "Q6"]), "an empty value is not the next label")
+        XCTAssertNil(AuctionVehicle.parse(pageTexts: ["Model", "Q6", "Eerste inschr", "2025"]))
+        XCTAssertNil(AuctionVehicle.parse(pageTexts: ["Merk", "Model", "Q6"]), "an empty value is not the next label")
+    }
+
+    /// The Copart lot page's text in reading order, as measured on copart.de/lot/50708766 (abridged).
+    private let copartLot = [
+        "Ein Fahrzeug finden", "Modelle", "2025 BMW i7 eDrive 50 Design Pure Excellence", "Motor startet",
+        "FIN:", "WBY41EJ070C******", "Kilometerstand:", "43.184 Km", "Kraftstoff:", "Elektrisch",
+        "Erstzulassung:", "26.05.2025", "Vollständige Fahrzeugdetails", "FIN:", "WBY41EJ070C******",
+        "Hersteller:", "BMW", "Modell:", "i7", "Jahr:", "2025", "Ausführung:", "eDrive 50 Design Pure Excellence",
+    ]
+
+    func testReadsACopartLot() {
+        XCTAssertEqual(AuctionVehicle.parseCopart(pageTexts: copartLot),
+                       AuctionVehicle(make: "BMW", model: "i7", firstRegistrationYear: 2025, source: .copart))
+    }
+
+    func testACopartLotWithoutRegistrationUsesItsModelYear() {
+        let lot = ["Hersteller:", "AUDI", "Modell:", "A4", "Jahr:", "2019", "Erstzulassung:", "-"]
+        XCTAssertEqual(AuctionVehicle.parseCopart(pageTexts: lot)?.firstRegistrationYear, 2019)
+    }
+
+    func testRecognizesCopartLotAddresses() {
+        XCTAssertTrue(AuctionVehicle.isCopartLotURL("https://www.copart.de/lot/50708766"))
+        XCTAssertTrue(AuctionVehicle.isCopartLotURL("https://www.copart.de/lot/50708766?_gl=1*qc0neg"))
+        XCTAssertTrue(AuctionVehicle.isCopartLotURL("https://www.copart.co.uk/lot/123/2019-bmw"))
+        XCTAssertFalse(AuctionVehicle.isCopartLotURL("https://www.copart.de/lotSearchResults?query=bmw"))
+        XCTAssertFalse(AuctionVehicle.isCopartLotURL("https://notcopart.example.com/lot/1"))
+    }
+
+    func testACopartLinkNamesItsSource() throws {
+        let url = try XCTUnwrap(AuctionVehicle(make: "BMW", model: "i7", firstRegistrationYear: 2025, source: .copart)
+            .searchURL(for: .mobileDE))
+        XCTAssertEqual(URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?.first { $0.name == "source" }?.value, "copart")
     }
 
     func testBuildsTheScrapeuiLinks() throws {
-        let vehicle = InformexVehicle(make: "AUDI", model: "Q6 e-tron", firstRegistrationYear: 2025)
+        let vehicle = AuctionVehicle(make: "AUDI", model: "Q6 e-tron", firstRegistrationYear: 2025)
         let url = try XCTUnwrap(vehicle.searchURL(for: .mobileBG))
         XCTAssertEqual(url.scheme, "https")
         XCTAssertEqual(url.host, "topkoli.com")
@@ -37,7 +70,7 @@ final class InformexVehicleTests: XCTestCase {
         XCTAssertEqual(items, ["make": "AUDI", "model": "Q6 e-tron", "year": "2025", "target": "mobile-bg", "source": "informex"])
         XCTAssertEqual(URLComponents(url: try XCTUnwrap(vehicle.searchURL(for: .mobileDE)), resolvingAgainstBaseURL: false)?
             .queryItems?.first { $0.name == "target" }?.value, "mobile-de")
-        XCTAssertFalse(InformexVehicle(make: "VW", model: nil, firstRegistrationYear: nil)
+        XCTAssertFalse(AuctionVehicle(make: "VW", model: nil, firstRegistrationYear: nil)
             .searchURL(for: .mobileBG)!.absoluteString.contains("model="), "absent details are left out")
     }
 }

@@ -61,7 +61,7 @@ final class FocusTracker {
     /// The backup poll while nothing on screen follows the field: focus changes arrive as hints
     /// (app switches, AX notifications, clicks, keystrokes), so the timer only repairs what an app
     /// failed to announce.
-    static let backgroundPollInterval: TimeInterval = 1.0
+    static let backgroundPollInterval: TimeInterval = 3.0
     /// Delay before answering an AX or activation hint: bursts (a window opening posts several)
     /// fold into one capture.
     static let eventCaptureDelay: TimeInterval = 0.03

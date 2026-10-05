@@ -32,7 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private let activationIndicatorController: ActivationIndicatorController
     private let vehicleSearchOverlayController: VehicleSearchOverlayController
-    private let informexPageWatcher: InformexPageWatcher
+    private let vehiclePageWatcher: VehiclePageWatcher
     private let focusDebugOverlayController: FocusDebugOverlayController?
     /// Retained for the app's lifetime because the environment owns its own `cancellables` (the only
     /// subscriptions wiring the focus-poll-interval setting and the global-toggle hotkey rebind to the
@@ -65,7 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsCoordinator = environment.settingsCoordinator
         activationIndicatorController = environment.activationIndicatorController
         vehicleSearchOverlayController = environment.vehicleSearchOverlayController
-        informexPageWatcher = environment.informexPageWatcher
+        vehiclePageWatcher = environment.vehiclePageWatcher
         focusDebugOverlayController = environment.focusDebugOverlayController
         super.init()
 
@@ -95,16 +95,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
-        // Search links beside the Informex offer field whenever that page is in front, without the
-        // writer having to click into the field first (see `InformexPageWatcher`).
-        informexPageWatcher.onChange = { [weak vehicleSearchOverlayController] placement in
+        // Search links beside the Informex offer field or the Copart lot title whenever such a page
+        // is in front, without the writer having to click anything first (see `VehiclePageWatcher`).
+        vehiclePageWatcher.onChange = { [weak vehicleSearchOverlayController] placement in
             vehicleSearchOverlayController?.update(
                 vehicle: placement?.vehicle,
-                fieldFrame: placement?.fieldFrame,
+                anchorFrame: placement?.anchorFrame,
                 hostBundleIdentifier: placement?.browserBundleIdentifier
             )
         }
-        informexPageWatcher.start()
+        vehiclePageWatcher.start()
 
         focusModel.$snapshot
             .sink { [weak self] snapshot in
@@ -261,7 +261,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         CotabbyLogger.app.info("Cotabby terminating, releasing services")
         activationIndicatorController.hide(reason: "Activation indicator hidden because Cotabby is terminating.")
-        informexPageWatcher.stop()
+        vehiclePageWatcher.stop()
         vehicleSearchOverlayController.hide()
         focusDebugOverlayController?.hide()
         suggestionCoordinator.stop()

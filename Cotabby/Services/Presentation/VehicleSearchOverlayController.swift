@@ -2,7 +2,8 @@ import AppKit
 import Foundation
 import Logging
 
-/// Two small buttons beside the Informex "Mijn offerte" field that open a search for the vehicle on
+/// Two small buttons beside an auction page's vehicle (the Informex "Mijn offerte" field, the Copart
+/// lot title) that open a search for the vehicle on
 /// the page: its mobile.bg saved search in scrapeui, and that search's mobile.de results.
 ///
 /// A borderless, non-activating panel, like the ghost-text panel: clicking a button never takes
@@ -14,34 +15,35 @@ import Logging
 /// shipped with Cotabby (a public repository should not redistribute other companies' logos);
 /// until they arrive, or if they cannot be fetched, the buttons show the site names as text.
 ///
-/// Owned by `CotabbyAppEnvironment`, driven by `AppDelegate` from `InformexPageWatcher`: shown while
-/// the offer page is in front and its "Mijn offerte" field is visible, hidden otherwise.
+/// Owned by `CotabbyAppEnvironment`, driven by `AppDelegate` from `VehiclePageWatcher`: shown while
+/// such a page is in front and its anchor (the offer field, the lot title) is visible, hidden
+/// otherwise.
 @MainActor
 final class VehicleSearchOverlayController: NSObject {
     private var panel: NSPanel?
-    private var buttons: [InformexVehicle.SearchTarget: NSButton] = [:]
-    private var vehicle: InformexVehicle?
+    private var buttons: [AuctionVehicle.SearchTarget: NSButton] = [:]
+    private var vehicle: AuctionVehicle?
     private var hostBundleIdentifier: String?
-    private var icons: [InformexVehicle.SearchTarget: NSImage] = [:]
+    private var icons: [AuctionVehicle.SearchTarget: NSImage] = [:]
     private var iconFetchStarted = false
 
     private static let buttonSize = NSSize(width: 26, height: 26)
     private static let spacing: CGFloat = 6
-    private static let gapFromField: CGFloat = 8
+    private static let gapFromAnchor: CGFloat = 8
 
-    private static let faviconURLs: [InformexVehicle.SearchTarget: URL] = [
+    private static let faviconURLs: [AuctionVehicle.SearchTarget: URL] = [
         .mobileBG: URL(string: "https://www.mobile.bg/favicon.ico")!,
         .mobileDE: URL(string: "https://www.mobile.de/favicon.ico")!,
     ]
 
-    private static let tooltips: [InformexVehicle.SearchTarget: String] = [
+    private static let tooltips: [AuctionVehicle.SearchTarget: String] = [
         .mobileBG: "Search this vehicle: mobile.bg saved search in scrapeui",
         .mobileDE: "Search this vehicle: mobile.de results in scrapeui",
     ]
 
-    /// Shows the buttons beside `fieldFrame` (Cocoa coordinates) for `vehicle`, or hides them.
-    func update(vehicle: InformexVehicle?, fieldFrame: CGRect?, hostBundleIdentifier: String?) {
-        guard let vehicle, let fieldFrame, fieldFrame.width > 0 else {
+    /// Shows the buttons beside `anchorFrame` (Cocoa coordinates) for `vehicle`, or hides them.
+    func update(vehicle: AuctionVehicle?, anchorFrame: CGRect?, hostBundleIdentifier: String?) {
+        guard let vehicle, let anchorFrame, anchorFrame.width > 0 else {
             hide()
             return
         }
@@ -49,7 +51,7 @@ final class VehicleSearchOverlayController: NSObject {
         self.hostBundleIdentifier = hostBundleIdentifier
         let panel = panel ?? makePanel()
         let size = NSSize(width: Self.buttonSize.width * 2 + Self.spacing, height: Self.buttonSize.height)
-        let origin = NSPoint(x: fieldFrame.maxX + Self.gapFromField, y: fieldFrame.midY - size.height / 2)
+        let origin = NSPoint(x: anchorFrame.maxX + Self.gapFromAnchor, y: anchorFrame.midY - size.height / 2)
         panel.setFrame(NSRect(origin: origin, size: size), display: true)
         if !panel.isVisible { panel.orderFrontRegardless() }
         fetchIconsIfNeeded()
@@ -76,7 +78,7 @@ final class VehicleSearchOverlayController: NSObject {
         let stack = NSStackView()
         stack.orientation = .horizontal
         stack.spacing = Self.spacing
-        for target in [InformexVehicle.SearchTarget.mobileDE, .mobileBG] {
+        for target in [AuctionVehicle.SearchTarget.mobileDE, .mobileBG] {
             let button = PointingHandButton(title: target == .mobileDE ? "de" : "bg", target: self, action: #selector(openSearch(_:)))
             button.tag = target == .mobileDE ? 0 : 1
             button.bezelStyle = .regularSquare
@@ -102,7 +104,7 @@ final class VehicleSearchOverlayController: NSObject {
     }
 
     @objc private func openSearch(_ sender: NSButton) {
-        let target: InformexVehicle.SearchTarget = sender.tag == 0 ? .mobileDE : .mobileBG
+        let target: AuctionVehicle.SearchTarget = sender.tag == 0 ? .mobileDE : .mobileBG
         guard let url = vehicle?.searchURL(for: target) else { return }
         let configuration = NSWorkspace.OpenConfiguration()
         if let bundle = hostBundleIdentifier,
@@ -147,7 +149,7 @@ final class VehicleSearchOverlayController: NSObject {
 
     private static let textFallbackBackground = NSColor.windowBackgroundColor.withAlphaComponent(0.92).cgColor
 
-    private func apply(_ image: NSImage, to target: InformexVehicle.SearchTarget) {
+    private func apply(_ image: NSImage, to target: AuctionVehicle.SearchTarget) {
         let trimmed = Self.trimmingTransparentMargins(image)
         icons[target] = trimmed
         guard let button = buttons[target] else { return }
