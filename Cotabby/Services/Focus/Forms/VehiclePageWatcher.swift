@@ -2,33 +2,35 @@ import AppKit
 import ApplicationServices
 import Foundation
 
-/// Watches for an auction page with a vehicle in the frontmost browser, so the vehicle search
-/// buttons can sit beside it as soon as the page is in front, without the writer clicking anything.
-/// Two pages (`PageKind`): the Informex offer page, where the buttons sit beside the "Mijn offerte"
-/// field, and a Copart lot page, where they sit beside the lot title.
+/// Watches Opera for an auction page with a vehicle on it, so the vehicle search buttons (and, on
+/// Copart, the fees and total for the current bid) can sit in Opera's address bar while the page is
+/// in front. Two pages (`PageKind`): the Informex offer page and a Copart lot page.
 ///
-/// The focus tracker only describes the focused text field, which is why this is its own small
-/// watcher. It runs only while Opera is the frontmost app, the browser these portals are used in
-/// (app switches are observed, so no timer runs at all elsewhere, Chrome and other browsers
-/// included). Off the pages it looks every `lookInterval` (3 s): it asks Opera for its focused
-/// window and reads its title, and only when the title names Informex or Copart finds the page (its
-/// web area), checks the page address, finds the anchor element and reads the vehicle
-/// (`AuctionVehicle`). The page walk runs once per page; afterwards the timer runs at `interval`
-/// and each tick reads only the focused window, its title and the anchor's position; the address
-/// is re-checked about once a second and the visible area is recomputed only when the anchor moves.
+/// The panel sits in the address bar rather than on the page: it never covers what the writer is
+/// reading, and it does not move when the page scrolls, so nothing has to follow the page.
+///
+/// Runs only while Opera is the frontmost app, the browser these portals are used in (app switches
+/// are observed, so no timer runs at all elsewhere, Chrome and other browsers included). Off the
+/// pages it looks every `lookInterval` (3 s): it asks Opera for its focused window and reads its
+/// title, and only when the title names Informex or Copart finds the page (its web area), checks the
+/// page address and reads the vehicle (`AuctionVehicle`). That walk runs once per page; afterwards
+/// each tick (`interval`, 1 s) reads the focused window, its title, the page address, the address
+/// bar's frame and whether the writer is typing in it, and on Copart the current bid.
 ///
 /// Owned by `CotabbyAppEnvironment`, started by `AppDelegate`, which forwards each change to
 /// `VehicleSearchOverlayController`. Reads only; it never writes to the page.
 @MainActor
 final class VehiclePageWatcher {
     struct Placement: Equatable {
-        let vehicle: AuctionVehicle
-        /// The element the buttons sit beside (the offer field, the lot title), Cocoa coordinates.
-        let anchorFrame: CGRect
+        /// The vehicles on the page, in page order. Copart: each with the fees for its current bid,
+        /// nil while no bid is shown (or signed out).
+        let lots: [AuctionLot]
+        /// Opera's address bar, Cocoa coordinates.
+        let addressBarFrame: CGRect
         let browserBundleIdentifier: String?
     }
 
-    /// The pages the watcher recognizes, from the window title down to the anchor element.
+    /// The pages the watcher recognizes, from the window title down to the vehicle.
     enum PageKind: CaseIterable {
         case informex
         case copart
@@ -54,52 +56,16 @@ final class VehiclePageWatcher {
             case .copart: AuctionVehicle.parseCopart(pageTexts: texts)
             }
         }
-
-        /// The element the buttons sit beside. Informex: the "Mijn offerte" field (DOM id `bidI`).
-        /// Copart: the lot title (`h1.ldp-header-title`), or rather its text, whose frame ends where
-        /// the title does; the heading itself spans the whole column.
-        func anchor(in webArea: AXUIElement) -> AXUIElement? {
-            switch self {
-            case .informex:
-                return VehiclePageWatcher.firstDescendant(of: webArea, limit: 4000) { node in
-                    AXHelper.stringValue(for: "AXDOMIdentifier" as CFString, on: node) == "bidI"
-                }
-            case .copart:
-                guard let heading = VehiclePageWatcher.firstDescendant(of: webArea, limit: 4000, where: { node in
-                    AXHelper.stringArrayValue(for: "AXDOMClassList" as CFString, on: node)?
-                        .contains("ldp-header-title") == true
-                }) else { return nil }
-                return AXHelper.childElements(of: heading).first { child in
-                    AXHelper.stringValue(for: kAXRoleAttribute as CFString, on: child) == "AXStaticText"
-                } ?? heading
-            }
-        }
     }
 
-    /// Called with the new placement whenever it changes; nil hides the buttons.
+    /// Called with the new placement whenever it changes; nil hides the panel.
     var onChange: ((Placement?) -> Void)?
 
     private var timer: Timer?
     private var timerInterval: TimeInterval?
     private var lastPlacement: Placement?
-    /// On the page, the address is re-read every this many ticks; leaving the page also invalidates
-    /// the anchor element, whose frame read then fails at once, so this only bounds a same-tab
-    /// navigation that keeps the element alive.
-    static let ticksPerAddressCheck = 6
-    private var ticksUntilAddressCheck = 0
-    /// The visible area computed for `visibleAreaAnchorFrame`; recomputed only when the anchor moves.
-    private var visibleArea: CGRect?
-    private var visibleAreaAnchorFrame: CGRect?
     private var activationObserver: NSObjectProtocol?
     private var page: CachedPage?
-    /// The anchor's frame on the previous tick and since when it has not moved: while it moves (the
-    /// page is scrolling) the buttons hide, and they return once it has settled.
-    private var lastAnchorFrame: CGRect?
-    private var anchorStillSince: Date?
-    /// The anchor's full height on this page. Opera reports a partly scrolled-out element with a
-    /// frame clipped to the visible part (measured: a 76 pt field in view, a 6 pt or 1 pt sliver
-    /// pinned to the top edge under the toolbar), so only the full height counts as in view.
-    private var fullAnchorHeight: CGFloat = 0
 
     private struct CachedPage {
         let kind: PageKind
@@ -107,24 +73,26 @@ final class VehiclePageWatcher {
         let window: AXUIElement
         let webArea: AXUIElement
         let url: String
-        let anchor: AXUIElement
         let vehicle: AuctionVehicle
-        /// The page's containers up to the window. Their frames' overlap is the part of the page
-        /// actually visible: the web area itself spans the whole scrollable document (measured in
-        /// Opera), so it cannot say whether the anchor has scrolled under the toolbar.
-        let containers: [AXUIElement]
+        /// The address bar (its frame places the panel) and the text field inside it (focused while
+        /// the writer types an address: the panel then steps aside).
+        let addressBar: AXUIElement
+        let addressField: AXUIElement
+        /// Copart: the text of the current bid (`.bidding-heading`), and whether the lot lists vehicle
+        /// documents (the document fee). The bid box renders after the rest of the page and may be
+        /// re-rendered, so a missing or dead element is looked for again every few ticks.
+        var bidText: AXUIElement?
+        var ticksUntilBidSearch = 0
+        let listsDocuments: Bool
     }
 
-    /// Room the buttons need to the right of the anchor (two 26 pt buttons, spacing, gap).
-    static let buttonsWidth: CGFloat = 26 * 2 + 6 + 8
+    /// Ticks between searches for a Copart bid element that is missing (one bounded page walk).
+    static let ticksPerBidSearch = 5
 
-    /// On a page: fast enough to hide the buttons as soon as scrolling starts. A tick reads the
-    /// focused window, its title and the anchor's frame (three attribute reads).
-    static let interval: TimeInterval = 0.15
+    /// On a page: how often the panel is refreshed (window moved, bid changed, page left).
+    static let interval: TimeInterval = 1
     /// Off the pages: how often Opera's focused window title is read to find one.
     static let lookInterval: TimeInterval = 3
-    /// How long the anchor must stay put before the buttons come back after a scroll.
-    static let settleTime: TimeInterval = 0.3
 
     func start() {
         guard activationObserver == nil else { return }
@@ -145,7 +113,7 @@ final class VehiclePageWatcher {
         publish(nil)
     }
 
-    /// Runs the timer only while Opera is in front; anywhere else the buttons are not wanted, so
+    /// Runs the timer only while Opera is in front; anywhere else the panel is not wanted, so
     /// nothing is polled and the timer does not wake the app. Activating Opera looks at once.
     private func updateTimerForFrontmostApp() {
         guard BrowserAppDetector.isOpera(bundleIdentifier: NSWorkspace.shared.frontmostApplication?.bundleIdentifier) else {
@@ -165,8 +133,7 @@ final class VehiclePageWatcher {
         let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
-        // Generous off the page (a look may come a little late), tight on it (scroll tracking).
-        timer.tolerance = interval == Self.interval ? 0.05 : 0.5
+        timer.tolerance = interval / 4
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
         timerInterval = interval
@@ -180,7 +147,6 @@ final class VehiclePageWatcher {
 
     private func tick() {
         publish(currentPlacement())
-        // Following the anchor on a page needs the full rate; finding a page does not.
         scheduleTimer(interval: page == nil ? Self.lookInterval : Self.interval)
     }
 
@@ -206,66 +172,84 @@ final class VehiclePageWatcher {
             return nil
         }
 
-        // Fast path: the same page in the same window as last tick. Reads the anchor position, and
-        // the address about once a second.
-        if let cached = page, cached.kind == kind, cached.processIdentifier == pid, CFEqual(cached.window, window) {
-            ticksUntilAddressCheck -= 1
-            if ticksUntilAddressCheck > 0 || Self.url(of: cached.webArea) == cached.url {
-                if ticksUntilAddressCheck <= 0 { ticksUntilAddressCheck = Self.ticksPerAddressCheck }
-                return placement(for: cached, browser: app.bundleIdentifier)
+        // The same page in the same window as last tick: no walk (save a missing Copart bid's).
+        if var cached = page, cached.kind == kind, cached.processIdentifier == pid, CFEqual(cached.window, window),
+           Self.url(of: cached.webArea) == cached.url {
+            if cached.kind == .copart, cached.bidText == nil {
+                cached.ticksUntilBidSearch -= 1
+                if cached.ticksUntilBidSearch <= 0 {
+                    cached.bidText = Self.copartBidText(in: cached.webArea)
+                    cached.ticksUntilBidSearch = Self.ticksPerBidSearch
+                }
             }
+            let result = placement(for: &cached, browser: app.bundleIdentifier)
+            page = cached
+            return result
         }
 
         page = nil
-        fullAnchorHeight = 0
-        visibleArea = nil
-        visibleAreaAnchorFrame = nil
-        ticksUntilAddressCheck = Self.ticksPerAddressCheck
         guard let webArea = Self.firstDescendant(of: window, limit: 3000, where: { node in
             AXHelper.stringValue(for: kAXRoleAttribute as CFString, on: node) == "AXWebArea"
         }), let url = Self.url(of: webArea), kind.applies(toURL: url),
-              let anchor = kind.anchor(in: webArea),
-              let vehicle = kind.vehicle(in: Self.texts(in: webArea)) else { return nil }
-        var containers: [AXUIElement] = []
-        var node = webArea
-        while containers.count < 20, let parent = AXHelper.parentElement(of: node) {
-            containers.append(parent)
-            if CFEqual(parent, window) { break }
-            node = parent
-        }
-        let cached = CachedPage(kind: kind, processIdentifier: pid, window: window, webArea: webArea, url: url,
-                                anchor: anchor, vehicle: vehicle, containers: containers)
+              let (addressBar, addressField) = Self.addressBar(in: window) else { return nil }
+        let texts = Self.texts(in: webArea)
+        guard let vehicle = kind.vehicle(in: texts) else { return nil }
+        let bidText = kind == .copart ? Self.copartBidText(in: webArea) : nil
+        var cached = CachedPage(kind: kind, processIdentifier: pid, window: window, webArea: webArea, url: url,
+                                vehicle: vehicle, addressBar: addressBar, addressField: addressField,
+                                bidText: bidText, ticksUntilBidSearch: Self.ticksPerBidSearch,
+                                listsDocuments: CopartFees.listsDocuments(pageTexts: texts))
+        let result = placement(for: &cached, browser: app.bundleIdentifier)
         page = cached
-        return placement(for: cached, browser: app.bundleIdentifier)
+        return result
     }
 
-    /// The anchor's frame, or nil unless the anchor and the buttons beside it are fully in view and
-    /// the page is not scrolling.
-    private func placement(for page: CachedPage, browser: String?) -> Placement? {
-        guard let anchor = AXHelper.rectValue(for: "AXFrame" as CFString, on: page.anchor), anchor.width > 0 else { return nil }
-        let now = Date()
-        if anchor != lastAnchorFrame {
-            lastAnchorFrame = anchor
-            anchorStillSince = now
+    /// Nil while the writer types in the address bar (the panel would cover the address).
+    private func placement(for page: inout CachedPage, browser: String?) -> Placement? {
+        guard let bar = AXHelper.rectValue(for: "AXFrame" as CFString, on: page.addressBar), bar.width > 0,
+              !Self.isFocused(page.addressField) else { return nil }
+        var fees: CopartFees.Breakdown?
+        if let bidText = page.bidText {
+            if let text = AXHelper.stringValue(for: kAXValueAttribute as CFString, on: bidText) {
+                fees = CopartFees.amount(fromBidText: text)
+                    .flatMap { CopartFees.breakdown(salePrice: $0, listsDocuments: page.listsDocuments) }
+            } else {
+                page.bidText = nil  // re-rendered: look for it again
+            }
         }
-        guard let still = anchorStillSince, now.timeIntervalSince(still) >= Self.settleTime else { return nil }
-        fullAnchorHeight = max(fullAnchorHeight, anchor.height)
-        guard anchor.height >= fullAnchorHeight - 1 else { return nil }
-        if visibleAreaAnchorFrame != anchor {
-            let frames = page.containers.compactMap { AXHelper.rectValue(for: "AXFrame" as CFString, on: $0) }
-                .filter { $0.width > 0 && $0.height > 0 }
-            visibleArea = frames.first.map { first in frames.dropFirst().reduce(first) { $0.intersection($1) } }
-            visibleAreaAnchorFrame = anchor
-        }
-        guard let visible = visibleArea else { return nil }
-        let needed = CGRect(x: anchor.minX, y: anchor.minY, width: anchor.width + Self.buttonsWidth, height: anchor.height)
-        guard visible.contains(needed) else { return nil }
-        return Placement(vehicle: page.vehicle,
-                         anchorFrame: AXHelper.cocoaRect(fromAccessibilityRect: anchor),
+        return Placement(lots: [AuctionLot(vehicle: page.vehicle, fees: fees)],
+                         addressBarFrame: AXHelper.cocoaRect(fromAccessibilityRect: bar),
                          browserBundleIdentifier: browser)
     }
 
     // MARK: - AX helpers
+
+    /// Opera's address bar: the first text field of the window's toolbar ("Address bar", measured
+    /// in Opera 2026: x 154-1546 in a 1920 pt window, Opera's own icons from x 1552), and the text
+    /// field inside it that takes focus while an address is typed ("Address field").
+    private static func addressBar(in window: AXUIElement) -> (AXUIElement, AXUIElement)? {
+        func role(_ node: AXUIElement) -> String? { AXHelper.stringValue(for: kAXRoleAttribute as CFString, on: node) }
+        guard let toolbar = firstDescendant(of: window, limit: 400, where: { role($0) == "AXToolbar" }),
+              let bar = firstDescendant(of: toolbar, limit: 200, where: { role($0) == "AXTextField" }) else { return nil }
+        let field = firstDescendant(of: bar, limit: 50, where: { role($0) == "AXTextField" }) ?? bar
+        return (bar, field)
+    }
+
+    private static func isFocused(_ element: AXUIElement) -> Bool {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXFocusedAttribute as CFString, &value) == .success else { return false }
+        return (value as? Bool) == true
+    }
+
+    /// The current bid's text on a Copart lot page (`div.bidding-heading`, "€12.500").
+    private static func copartBidText(in webArea: AXUIElement) -> AXUIElement? {
+        guard let bid = firstDescendant(of: webArea, limit: 4000, where: { node in
+            AXHelper.stringArrayValue(for: "AXDOMClassList" as CFString, on: node)?.contains("bidding-heading") == true
+        }) else { return nil }
+        return AXHelper.childElements(of: bid).first { child in
+            AXHelper.stringValue(for: kAXRoleAttribute as CFString, on: child) == "AXStaticText"
+        } ?? bid
+    }
 
     private static func element(_ attribute: CFString, on element: AXUIElement) -> AXUIElement? {
         var value: CFTypeRef?
@@ -282,7 +266,7 @@ final class VehiclePageWatcher {
     }
 
     /// Breadth-first, at most `limit` nodes: the page tree is large and this runs on the main actor.
-    fileprivate static func firstDescendant(
+    private static func firstDescendant(
         of root: AXUIElement, limit: Int, where matches: (AXUIElement) -> Bool
     ) -> AXUIElement? {
         var queue = [root]

@@ -95,12 +95,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
-        // Search links beside the Informex offer field or the Copart lot title whenever such a page
-        // is in front, without the writer having to click anything first (see `VehiclePageWatcher`).
+        // Search links (and Copart fees) in Opera's address bar whenever an Informex offer page or
+        // a Copart lot is in front, without the writer having to click anything (see
+        // `VehiclePageWatcher`).
         vehiclePageWatcher.onChange = { [weak vehicleSearchOverlayController] placement in
             vehicleSearchOverlayController?.update(
-                vehicle: placement?.vehicle,
-                anchorFrame: placement?.anchorFrame,
+                lots: placement?.lots ?? [],
+                addressBarFrame: placement?.addressBarFrame,
                 hostBundleIdentifier: placement?.browserBundleIdentifier
             )
         }

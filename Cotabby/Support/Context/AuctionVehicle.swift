@@ -125,3 +125,10 @@ nonisolated struct AuctionVehicle: Equatable, Sendable {
         return components?.url
     }
 }
+
+/// One vehicle the panel shows: what it is (for the search links) and, on Copart, the fees for its
+/// current bid. One per lot or offer page, one per board on Copart's live auction dashboard.
+nonisolated struct AuctionLot: Equatable, Sendable {
+    let vehicle: AuctionVehicle
+    let fees: CopartFees.Breakdown?
+}

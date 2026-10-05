@@ -2,34 +2,38 @@ import AppKit
 import Foundation
 import Logging
 
-/// Two small buttons beside an auction page's vehicle (the Informex "Mijn offerte" field, the Copart
-/// lot title) that open a search for the vehicle on
-/// the page: its mobile.bg saved search in scrapeui, and that search's mobile.de results.
+/// The vehicle search panel in Opera's address bar: for each vehicle on the page (one on a lot or
+/// offer page, one per board on Copart's live auction dashboard) two small buttons that open a
+/// search for it (its mobile.bg saved search in scrapeui, and that search's mobile.de results) and,
+/// on Copart, the fees and total for the current bid (`CopartFees`).
 ///
 /// A borderless, non-activating panel, like the ghost-text panel: clicking a button never takes
-/// focus away from the browser, and the panel floats over the page instead of living in it. The
-/// link opens in the same browser as the page (where the writer is signed in to scrapeui), not in
-/// whatever the default browser is.
+/// focus away from the browser. It sits at the right end of the address bar, so it never covers the
+/// page and does not move when the page scrolls. The link opens in the same browser as the page
+/// (where the writer is signed in to scrapeui), not in whatever the default browser is.
 ///
 /// The brand icons are the sites' own favicons, fetched once and cached on disk. They are not
 /// shipped with Cotabby (a public repository should not redistribute other companies' logos);
 /// until they arrive, or if they cannot be fetched, the buttons show the site names as text.
 ///
 /// Owned by `CotabbyAppEnvironment`, driven by `AppDelegate` from `VehiclePageWatcher`: shown while
-/// such a page is in front and its anchor (the offer field, the lot title) is visible, hidden
-/// otherwise.
+/// such a page is in front in Opera, hidden otherwise (and while an address is being typed).
 @MainActor
 final class VehicleSearchOverlayController: NSObject {
     private var panel: NSPanel?
-    private var buttons: [AuctionVehicle.SearchTarget: NSButton] = [:]
-    private var vehicle: AuctionVehicle?
+    private var stack: NSStackView?
+    private var lots: [AuctionLot] = []
+    /// Every button, with the vehicle index and target it opens, so arriving icons reach them all.
+    private var buttons: [(button: NSButton, target: AuctionVehicle.SearchTarget)] = []
     private var hostBundleIdentifier: String?
     private var icons: [AuctionVehicle.SearchTarget: NSImage] = [:]
     private var iconFetchStarted = false
 
-    private static let buttonSize = NSSize(width: 26, height: 26)
-    private static let spacing: CGFloat = 6
-    private static let gapFromAnchor: CGFloat = 8
+    private static let buttonSize = NSSize(width: 22, height: 22)
+    private static let spacing: CGFloat = 4
+    private static let groupSpacing: CGFloat = 14
+    /// Gap between the panel and the address bar's right end.
+    private static let insetFromBarEnd: CGFloat = 8
 
     private static let faviconURLs: [AuctionVehicle.SearchTarget: URL] = [
         .mobileBG: URL(string: "https://www.mobile.bg/favicon.ico")!,
@@ -41,17 +45,21 @@ final class VehicleSearchOverlayController: NSObject {
         .mobileDE: "Search this vehicle: mobile.de results in scrapeui",
     ]
 
-    /// Shows the buttons beside `anchorFrame` (Cocoa coordinates) for `vehicle`, or hides them.
-    func update(vehicle: AuctionVehicle?, anchorFrame: CGRect?, hostBundleIdentifier: String?) {
-        guard let vehicle, let anchorFrame, anchorFrame.width > 0 else {
+    /// Shows the panel for `lots` at the right end of `addressBarFrame` (Cocoa coordinates), or
+    /// hides it.
+    func update(lots: [AuctionLot], addressBarFrame: CGRect?, hostBundleIdentifier: String?) {
+        guard !lots.isEmpty, let addressBarFrame, addressBarFrame.width > 0 else {
             hide()
             return
         }
-        self.vehicle = vehicle
+        BackgroundCursor.enable()
         self.hostBundleIdentifier = hostBundleIdentifier
         let panel = panel ?? makePanel()
-        let size = NSSize(width: Self.buttonSize.width * 2 + Self.spacing, height: Self.buttonSize.height)
-        let origin = NSPoint(x: anchorFrame.maxX + Self.gapFromAnchor, y: anchorFrame.midY - size.height / 2)
+        if lots != self.lots { rebuild(for: lots) }
+        guard let stack else { return }
+        let size = stack.fittingSize
+        let origin = NSPoint(x: addressBarFrame.maxX - Self.insetFromBarEnd - size.width,
+                             y: addressBarFrame.midY - size.height / 2)
         panel.setFrame(NSRect(origin: origin, size: size), display: true)
         if !panel.isVisible { panel.orderFrontRegardless() }
         fetchIconsIfNeeded()
@@ -74,38 +82,90 @@ final class VehicleSearchOverlayController: NSObject {
         panel.isOpaque = false
         panel.hasShadow = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
-
         let stack = NSStackView()
         stack.orientation = .horizontal
-        stack.spacing = Self.spacing
-        for target in [AuctionVehicle.SearchTarget.mobileDE, .mobileBG] {
-            let button = PointingHandButton(title: target == .mobileDE ? "de" : "bg", target: self, action: #selector(openSearch(_:)))
-            button.tag = target == .mobileDE ? 0 : 1
-            button.bezelStyle = .regularSquare
-            button.isBordered = false
-            button.wantsLayer = true
-            button.layer?.cornerRadius = 6
-            button.layer?.masksToBounds = true
-            button.layer?.backgroundColor = Self.textFallbackBackground
-            button.font = .systemFont(ofSize: 10, weight: .semibold)
-            button.imageScaling = .scaleProportionallyUpOrDown
-            button.toolTip = Self.tooltips[target]
-            button.setAccessibilityLabel(Self.tooltips[target])
-            button.translatesAutoresizingMaskIntoConstraints = false
-            button.widthAnchor.constraint(equalToConstant: Self.buttonSize.width).isActive = true
-            button.heightAnchor.constraint(equalToConstant: Self.buttonSize.height).isActive = true
-            stack.addArrangedSubview(button)
-            buttons[target] = button
-            if let icon = icons[target] { show(icon, on: button) }
-        }
+        stack.spacing = Self.groupSpacing
+        stack.alignment = .centerY
         panel.contentView = stack
         self.panel = panel
+        self.stack = stack
         return panel
     }
 
+    /// One group per vehicle, in page order: its fees (when known), then its two buttons.
+    private func rebuild(for lots: [AuctionLot]) {
+        self.lots = lots
+        buttons.removeAll()
+        guard let stack else { return }
+        stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        for (index, lot) in lots.enumerated() {
+            let group = NSStackView()
+            group.orientation = .horizontal
+            group.spacing = Self.spacing
+            group.alignment = .centerY
+            if let fees = lot.fees { group.addArrangedSubview(feeLabel(fees)) }
+            for target in [AuctionVehicle.SearchTarget.mobileDE, .mobileBG] {
+                group.addArrangedSubview(searchButton(target: target, vehicleIndex: index))
+            }
+            stack.addArrangedSubview(group)
+        }
+    }
+
+    private func searchButton(target: AuctionVehicle.SearchTarget, vehicleIndex: Int) -> NSButton {
+        let button = PointingHandButton(title: target == .mobileDE ? "de" : "bg", target: self, action: #selector(openSearch(_:)))
+        button.tag = vehicleIndex * 2 + (target == .mobileDE ? 0 : 1)
+        button.bezelStyle = .regularSquare
+        button.isBordered = false
+        button.wantsLayer = true
+        button.layer?.cornerRadius = 5
+        button.layer?.masksToBounds = true
+        button.layer?.backgroundColor = Self.textFallbackBackground
+        button.font = .systemFont(ofSize: 10, weight: .semibold)
+        button.imageScaling = .scaleProportionallyUpOrDown
+        button.toolTip = Self.tooltips[target]
+        button.setAccessibilityLabel(Self.tooltips[target])
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.widthAnchor.constraint(equalToConstant: Self.buttonSize.width).isActive = true
+        button.heightAnchor.constraint(equalToConstant: Self.buttonSize.height).isActive = true
+        if let icon = icons[target] { show(icon, on: button) }
+        buttons.append((button, target))
+        return button
+    }
+
+    /// "Gebühren 855 € · Gesamt 13.355 €", net like Copart's bids; the parts in the tooltip.
+    private func feeLabel(_ fees: CopartFees.Breakdown) -> NSView {
+        let label = NSTextField(labelWithString:
+            "Gebühren \(CopartFees.format(fees.fees)) · Gesamt \(CopartFees.format(fees.total))")
+        label.font = .monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
+        label.textColor = .labelColor
+        var parts = [
+            "Gebot \(CopartFees.format(fees.salePrice))",
+            "Käufergebühr \(CopartFees.format(fees.buyerFee))",
+            "Onlinegebotsgebühr \(CopartFees.format(fees.onlineBidFee))",
+            "Bereitstellungsgebühr \(CopartFees.format(fees.pickupFee))",
+        ]
+        if fees.documentFee > 0 { parts.append("Dokumentengebühr \(CopartFees.format(fees.documentFee))") }
+        parts.append("Alle Beträge netto (Copart, Stand Januar 2025)")
+        let pill = NSView()
+        pill.wantsLayer = true
+        pill.layer?.cornerRadius = 5
+        pill.layer?.backgroundColor = Self.textFallbackBackground
+        pill.toolTip = parts.joined(separator: "\n")
+        label.translatesAutoresizingMaskIntoConstraints = false
+        pill.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: pill.leadingAnchor, constant: 7),
+            label.trailingAnchor.constraint(equalTo: pill.trailingAnchor, constant: -7),
+            label.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
+            pill.heightAnchor.constraint(equalToConstant: Self.buttonSize.height),
+        ])
+        return pill
+    }
+
     @objc private func openSearch(_ sender: NSButton) {
-        let target: AuctionVehicle.SearchTarget = sender.tag == 0 ? .mobileDE : .mobileBG
-        guard let url = vehicle?.searchURL(for: target) else { return }
+        let target: AuctionVehicle.SearchTarget = sender.tag % 2 == 0 ? .mobileDE : .mobileBG
+        let index = sender.tag / 2
+        guard lots.indices.contains(index), let url = lots[index].vehicle.searchURL(for: target) else { return }
         let configuration = NSWorkspace.OpenConfiguration()
         if let bundle = hostBundleIdentifier,
            let browser = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) {
@@ -152,8 +212,7 @@ final class VehicleSearchOverlayController: NSObject {
     private func apply(_ image: NSImage, to target: AuctionVehicle.SearchTarget) {
         let trimmed = Self.trimmingTransparentMargins(image)
         icons[target] = trimmed
-        guard let button = buttons[target] else { return }
-        show(trimmed, on: button)
+        for entry in buttons where entry.target == target { show(trimmed, on: entry.button) }
     }
 
     /// A real icon fills the button on its own: the grey fallback backing would show through any
@@ -183,10 +242,33 @@ final class VehicleSearchOverlayController: NSObject {
     }
 }
 
+/// Lets Cotabby set the mouse cursor while another app is active. The window server otherwise
+/// ignores cursor changes from a background app, and Cotabby is always in the background while the
+/// writer points at its panel (the browser stays active), so without this the pointing hand never
+/// appeared. `SetsCursorInBackground` is a private window-server connection property (no public
+/// API exists); it is looked up at run time, so a system without it simply keeps the arrow.
+@MainActor
+enum BackgroundCursor {
+    private static var enabled = false
+
+    static func enable() {
+        guard !enabled else { return }
+        enabled = true
+        typealias MainConnection = @convention(c) () -> Int32
+        typealias SetProperty = @convention(c) (Int32, Int32, CFString, CFTypeRef) -> Int32
+        guard let handle = dlopen(nil, RTLD_NOW),
+              let mainSymbol = dlsym(handle, "CGSMainConnectionID"),
+              let setSymbol = dlsym(handle, "CGSSetConnectionProperty") else { return }
+        let connection = unsafeBitCast(mainSymbol, to: MainConnection.self)()
+        _ = unsafeBitCast(setSymbol, to: SetProperty.self)(
+            connection, connection, "SetsCursorInBackground" as CFString, kCFBooleanTrue)
+    }
+}
+
 /// A button that shows the pointing-hand cursor while the mouse is over it. Cursor rects only work in
 /// the key window of the active app, and this panel never becomes key (the browser stays active), so
-/// the cursor is set from an always-active tracking area instead. Moves re-assert it, because the
-/// browser underneath may set its own cursor between events.
+/// the cursor is set from an always-active tracking area instead (with `BackgroundCursor` enabled).
+/// Moves re-assert it, because the browser underneath may set its own cursor between events.
 final class PointingHandButton: NSButton {
     private var cursorTrackingArea: NSTrackingArea?
 
