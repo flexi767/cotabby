@@ -188,6 +188,20 @@ final class FocusTrackingModelTests: XCTestCase {
         wait(for: [captured], timeout: 2)
     }
 
+    /// Typing brings the full rate back for a moment, so the caret-advance sampler sees the caret
+    /// move after each keystroke (the ghost's size in Chromium hosts depends on it).
+    func test_typing_bringsBackTheFullPollRate() {
+        runOnMainActor {
+            let model = makeModel()
+            model.updatePollInterval(milliseconds: 150)
+            model.start()
+            XCTAssertEqual(model.currentPollTimerInterval, FocusTracker.backgroundPollInterval)
+
+            model.noteTyping()
+            XCTAssertEqual(model.currentPollTimerInterval ?? 0, 0.15, accuracy: 0.0001)
+        }
+    }
+
     /// Without anything following the field the poll is only a backup; a visible suggestion brings
     /// it back to the configured rate, and hiding it lets it fall back again.
     func test_pollInterval_isBackgroundUnlessGeometryIsTrackedClosely() {

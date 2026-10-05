@@ -49,11 +49,17 @@ protocol SuggestionFocusProviding: AnyObject {
     /// with the field when the page scrolls. Otherwise focus is tracked by events and a slow backup
     /// poll. Providers without a poll use the default no-op.
     func setTracksGeometryClosely(_ on: Bool, reason: String)
+
+    /// The user typed into the field; the provider may read it more often for a moment.
+    func noteTyping()
 }
 
 extension SuggestionFocusProviding {
     /// Default: no poll to speed up.
     func setTracksGeometryClosely(_ on: Bool, reason: String) {}
+
+    /// Default: no poll to speed up.
+    func noteTyping() {}
 
     /// Conservative default: age unknown, so `refreshIfStale` always refreshes. Production
     /// providers report a real age; test fakes can ignore freshness entirely.

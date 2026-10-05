@@ -85,6 +85,11 @@ final class FocusTrackingModel: ObservableObject {
         tracker.noteFocusMayHaveChanged()
     }
 
+    /// The user typed: poll at the full rate for a moment (see `FocusTracker.noteTyping`).
+    func noteTyping() {
+        tracker.noteTyping()
+    }
+
     /// Polls at the full rate while something on screen follows the field (see `FocusTracker`).
     func setTracksGeometryClosely(_ on: Bool, reason: String) {
         tracker.setTracksGeometryClosely(on, reason: reason)

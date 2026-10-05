@@ -250,10 +250,13 @@ final class VehiclePageWatcher {
 
     /// Opera's address bar: the first text field of the window's toolbar ("Address bar", measured
     /// in Opera 2026: x 154-1546 in a 1920 pt window, Opera's own icons from x 1552), and the text
-    /// field inside it that takes focus while an address is typed ("Address field").
+    /// field inside it that takes focus while an address is typed ("Address field"). The search
+    /// skips page content, and its budget covers a long tab strip: with many tabs open the toolbar
+    /// came after 400 elements (measured), and the panel never appeared on those windows.
     private static func addressBar(in window: AXUIElement) -> (AXUIElement, AXUIElement)? {
         func role(_ node: AXUIElement) -> String? { AXHelper.stringValue(for: kAXRoleAttribute as CFString, on: node) }
-        guard let toolbar = firstDescendant(of: window, limit: 400, where: { role($0) == "AXToolbar" }),
+        guard let toolbar = firstDescendant(of: window, limit: 2000, skippingInto: { role($0) == "AXWebArea" },
+                                            where: { role($0) == "AXToolbar" }),
               let bar = firstDescendant(of: toolbar, limit: 200, where: { role($0) == "AXTextField" }) else { return nil }
         let field = firstDescendant(of: bar, limit: 50, where: { role($0) == "AXTextField" }) ?? bar
         return (bar, field)
@@ -291,7 +294,8 @@ final class VehiclePageWatcher {
 
     /// Breadth-first, at most `limit` nodes: the page tree is large and this runs on the main actor.
     private static func firstDescendant(
-        of root: AXUIElement, limit: Int, where matches: (AXUIElement) -> Bool
+        of root: AXUIElement, limit: Int, skippingInto skip: (AXUIElement) -> Bool = { _ in false },
+        where matches: (AXUIElement) -> Bool
     ) -> AXUIElement? {
         var queue = [root]
         var index = 0
@@ -299,6 +303,7 @@ final class VehiclePageWatcher {
             let node = queue[index]
             index += 1
             if index > 1, matches(node) { return node }
+            if index > 1, skip(node) { continue }
             queue += AXHelper.childElements(of: node)
         }
         return nil

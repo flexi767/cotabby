@@ -237,6 +237,22 @@ final class FocusTracker {
         rescheduleTimerIfIntervalChanged()
     }
 
+    /// Keeps the full poll rate for `typingWindow` after a keystroke. The ghost's size in a Chromium
+    /// or Electron host comes from the caret's own movement (`CaretAdvanceSampler`), which needs a
+    /// read after the host has moved its caret box: such hosts publish a keystroke's text a moment
+    /// before its caret, and the keystroke's own read sees only the text. With only the backup poll
+    /// between keystrokes, samples stopped forming and the ghost fell back to the host's reported
+    /// size (measured: a tenth too small in the Claude desktop app at 110% zoom). The window is
+    /// extended by each keystroke and ends on the first tick past it, without a timer per key.
+    func noteTyping() {
+        typingUntil = ProcessInfo.processInfo.systemUptime + Self.typingWindow
+        setTracksGeometryClosely(true, reason: Self.typingReason)
+    }
+
+    static let typingWindow: TimeInterval = 2
+    private static let typingReason = "typing"
+    private var typingUntil: TimeInterval = 0
+
     /// A click (press or release) may have moved focus or the caret; captures once the host app
     /// has had time to act on it.
     func noteFocusMayHaveChanged() {
@@ -257,6 +273,9 @@ final class FocusTracker {
     /// is re-armed to a longer interval, so an idle machine stops waking ~12.5x/second only to skip
     /// the walk it would not run anyway. That wasteful wake was the dominant idle cost in #280.
     private func handleTimerTick() {
+        if closeTrackingReasons.contains(Self.typingReason), ProcessInfo.processInfo.systemUptime > typingUntil {
+            closeTrackingReasons.remove(Self.typingReason)
+        }
         backoff.recordCapture(didChange: performCaptureAndPublish())
         rescheduleTimerIfIntervalChanged()
     }

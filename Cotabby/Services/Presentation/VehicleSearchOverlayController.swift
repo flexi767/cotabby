@@ -22,6 +22,8 @@ import Logging
 final class VehicleSearchOverlayController: NSObject {
     private var panel: NSPanel?
     private var stack: NSStackView?
+    /// The content's own size, measured when it was built.
+    private var contentSize: NSSize = .zero
     private var lots: [AuctionLot] = []
     /// Every button, with the vehicle index and target it opens, so arriving icons reach them all.
     private var buttons: [(button: NSButton, target: AuctionVehicle.SearchTarget)] = []
@@ -56,8 +58,8 @@ final class VehicleSearchOverlayController: NSObject {
         self.hostBundleIdentifier = hostBundleIdentifier
         let panel = panel ?? makePanel()
         if lots != self.lots { rebuild(for: lots) }
-        guard let stack else { return }
-        let size = stack.frame.size
+        guard stack != nil else { return }
+        let size = contentSize
         let origin = NSPoint(x: addressBarFrame.maxX - Self.insetFromBarEnd - size.width,
                              y: addressBarFrame.midY - size.height / 2)
         panel.setFrame(NSRect(origin: origin, size: size), display: true)
@@ -111,7 +113,10 @@ final class VehicleSearchOverlayController: NSObject {
             stack.addArrangedSubview(group)
         }
         stack.layoutSubtreeIfNeeded()
-        stack.setFrameSize(stack.fittingSize)
+        // Measured before it becomes the content view: installing it resizes it to the panel's
+        // current frame (zero for a new panel), and a zero size placed the panel's corner where its
+        // right end belongs, so it grew over Opera's own toolbar icons (measured on a lot page).
+        contentSize = stack.fittingSize
         panel?.contentView = stack
         self.stack = stack
     }
