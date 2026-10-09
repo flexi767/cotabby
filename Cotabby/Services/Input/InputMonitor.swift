@@ -1,4 +1,5 @@
 import ApplicationServices
+import Carbon.HIToolbox
 import Foundation
 import Logging
 
@@ -16,14 +17,53 @@ import Logging
 /// synthetic CoreGraphics events. That matters because app-hosted macOS tests can crash in CGEvent
 /// allocation/teardown even when the production code path is correct.
 struct InputMonitorKeyEvent {
+    /// The physical layout of the keyboard a key came from. It decides which key code the key
+    /// above Tab sends: `kVK_ISO_Section` (10) on ISO keyboards, `kVK_ANSI_Grave` (50) on ANSI and
+    /// JIS ones, where on ISO 50 is the key beside left Shift instead.
+    enum KeyboardLayout: Equatable {
+        case ansi, iso, jis, unknown
+
+        /// The layout of the keyboard that produced `event` (one Mac can have several).
+        init(event: CGEvent) {
+            let type = event.getIntegerValueField(.keyboardEventKeyboardType)
+            switch Int(KBGetLayoutType(Int16(truncatingIfNeeded: type))) {
+            case kKeyboardISO: self = .iso
+            case kKeyboardANSI: self = .ansi
+            case kKeyboardJIS: self = .jis
+            default: self = .unknown
+            }
+        }
+    }
+
     let keyCode: CGKeyCode
     let characters: String
     let flags: CGEventFlags
+    let keyboardLayout: KeyboardLayout
 
-    init(keyCode: CGKeyCode, characters: String = "", flags: CGEventFlags = []) {
+    init(keyCode: CGKeyCode, characters: String = "", flags: CGEventFlags = [], keyboardLayout: KeyboardLayout = .unknown) {
         self.keyCode = keyCode
         self.characters = characters
         self.flags = flags
+        self.keyboardLayout = keyboardLayout
+    }
+
+    /// True when this is the key above Tab, judged by the keyboard it came from.
+    var isKeyAboveTab: Bool {
+        switch keyboardLayout {
+        case .iso: keyCode == 10
+        case .ansi, .jis: keyCode == 50
+        case .unknown: false
+        }
+    }
+
+    /// True when this key is the one `boundKeyCode` names. A binding to the key above Tab,
+    /// recorded on one keyboard (10 on a built-in German ISO keyboard, 50 on an external English
+    /// ANSI one), also matches that key on a keyboard of the other layout. (A binding of 50 made on
+    /// an ISO keyboard means the key beside left Shift; it then also answers to the ISO key above
+    /// Tab, since a binding does not record which keyboard it was made on.)
+    func matches(boundKeyCode: CGKeyCode) -> Bool {
+        if keyCode == boundKeyCode { return true }
+        return InputMonitor.characterAcceptKeyCodes.contains(boundKeyCode) && isKeyAboveTab
     }
 }
 
@@ -526,7 +566,8 @@ final class InputMonitor {
                 InputMonitorKeyEvent(
                     keyCode: keyCode(from: event),
                     characters: event.unicodeString,
-                    flags: event.flags
+                    flags: event.flags,
+                    keyboardLayout: .init(event: event)
                 )
             )
             return Unmanaged.passUnretained(event)
@@ -593,7 +634,9 @@ final class InputMonitor {
                 return Unmanaged.passUnretained(event)
             }
 
-            let keyEvent = InputMonitorKeyEvent(keyCode: keyCode(from: event), flags: event.flags)
+            let keyEvent = InputMonitorKeyEvent(
+                keyCode: keyCode(from: event), flags: event.flags, keyboardLayout: .init(event: event)
+            )
             switch resolveAcceptKeyDown(keyEvent) {
             case .consume:
                 return nil
@@ -781,7 +824,7 @@ final class InputMonitor {
     /// Whether `keyEvent` is a bound accept key that would type a character: the key above Tab with
     /// no modifiers.
     func isCharacterAcceptKey(_ keyEvent: InputMonitorKeyEvent) -> Bool {
-        Self.characterAcceptKeyCodes.contains(keyEvent.keyCode)
+        (keyEvent.isKeyAboveTab || (keyEvent.keyboardLayout == .unknown && Self.characterAcceptKeyCodes.contains(keyEvent.keyCode)))
             && ShortcutModifierMask(eventFlags: keyEvent.flags).isEmpty
             && acceptanceKind(for: keyEvent) != nil
     }
@@ -796,11 +839,11 @@ final class InputMonitor {
         // Full-suggestion acceptance takes priority so pressing the full-accept key doesn't
         // silently fall through to word-accept when both are assigned. The bound modifier set must
         // match exactly after normalization, so `Tab` and `Shift+Tab` remain distinct bindings.
-        if keyEvent.keyCode == fullAccept.keyCode, eventModifiers == fullAccept.modifiers {
+        if keyEvent.matches(boundKeyCode: fullAccept.keyCode), eventModifiers == fullAccept.modifiers {
             return .fullAcceptance
         }
 
-        if keyEvent.keyCode == accept.keyCode, eventModifiers == accept.modifiers {
+        if keyEvent.matches(boundKeyCode: accept.keyCode), eventModifiers == accept.modifiers {
             return .acceptance
         }
 

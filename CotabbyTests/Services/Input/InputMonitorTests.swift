@@ -231,6 +231,39 @@ final class InputMonitorTests: XCTestCase {
         XCTAssertEqual(idlePresses(), 0)
     }
 
+    /// A binding recorded on the built-in German (ISO) keyboard, where the key above Tab is 10,
+    /// also answers to the key above Tab of an external English (ANSI) keyboard, which sends 50.
+    func test_keyAboveTabOfAnAnsiKeyboardMatchesABindingRecordedOnAnIsoKeyboard() {
+        let (monitor, idlePresses) = makeCharacterKeyMonitor(binding: Self.isoSection)
+        monitor.shouldConsumeAcceptKeyProvider = { false }
+
+        let ansiKeyAboveTab = InputMonitorKeyEvent(keyCode: Self.backtick, keyboardLayout: .ansi)
+        XCTAssertEqual(monitor.handleAcceptKeyDown(ansiKeyAboveTab), .consume)
+        XCTAssertEqual(idlePresses(), 1)
+        XCTAssertTrue(monitor.isWordAcceptKey(ansiKeyAboveTab))
+    }
+
+    /// On an ISO keyboard 50 is the key beside left Shift ("<" on German): it keeps typing.
+    func test_isoKeyBesideLeftShiftNeverMatchesTheKeyAboveTab() {
+        let (monitor, idlePresses) = makeCharacterKeyMonitor(binding: Self.isoSection)
+        monitor.shouldConsumeAcceptKeyProvider = { false }
+
+        let isoLessThan = InputMonitorKeyEvent(keyCode: Self.backtick, keyboardLayout: .iso)
+        XCTAssertEqual(monitor.handleAcceptKeyDown(isoLessThan), .notHandled)
+        XCTAssertEqual(idlePresses(), 0)
+        XCTAssertFalse(monitor.isCharacterAcceptKey(isoLessThan))
+    }
+
+    /// And the other way round: a binding recorded on an ANSI keyboard (50) answers to the ISO key.
+    func test_keyAboveTabOfAnIsoKeyboardMatchesABindingRecordedOnAnAnsiKeyboard() {
+        let (monitor, _) = makeCharacterKeyMonitor(binding: Self.backtick)
+        monitor.shouldConsumeAcceptKeyProvider = { true }
+        let delivered = recordKinds(on: monitor, accepts: true)
+
+        XCTAssertEqual(monitor.handleAcceptKeyDown(InputMonitorKeyEvent(keyCode: Self.isoSection, keyboardLayout: .iso)), .consume)
+        XCTAssertEqual(delivered(), [.acceptance])
+    }
+
     func test_tabAcceptKeyKeepsPassingThroughWhenNothingIsVisible() {
         let (monitor, idlePresses) = makeCharacterKeyMonitor(binding: Self.tab)
         monitor.shouldConsumeAcceptKeyProvider = { false }
