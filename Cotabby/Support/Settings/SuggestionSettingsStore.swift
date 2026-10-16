@@ -119,6 +119,7 @@ struct SuggestionSettingsStore {
     private static let pauseStateDefaultsKey = "cotabbySuggestionPauseState"
     private static let disabledAppRulesDefaultsKey = "cotabbyDisabledAppRules"
     private static let perAppShortcutOverridesDefaultsKey = "cotabbyPerAppShortcutOverrides"
+    private static let doubleTapFullAcceptanceDefaultsKey = "cotabbyDoubleTapAcceptsEntireSuggestion"
     private static let suggestInIntegratedTerminalsDefaultsKey = "cotabbySuggestInIntegratedTerminals"
     private static let showCaretIndicatorDefaultsKey = "cotabbyShowCaretIndicator"
     private static let selectedIndicatorModeDefaultsKey = "cotabbySelectedIndicatorMode"
@@ -196,6 +197,8 @@ struct SuggestionSettingsStore {
     private static let globalToggleKeyLabelDefaultsKey = "cotabbyGlobalToggleKeyLabel"
     private static let acceptanceGranularityDefaultsKey = "cotabbyAcceptanceGranularity"
 
+    private static let appleLanguageFallbackEnabledDefaultsKey = "cotabbyAppleLanguageFallbackEnabled"
+    private static let keepFallbackModelLoadedDefaultsKey = "cotabbyKeepFallbackModelLoaded"
     private static let powerModelSwitchingEnabledDefaultsKey = "cotabbyPowerBasedModelSwitchingEnabled"
     private static let batteryEngineDefaultsKey = "cotabbyBatteryEngine"
     private static let batteryModelFilenameDefaultsKey = "cotabbyBatteryModelFilename"
@@ -216,6 +219,7 @@ struct SuggestionSettingsStore {
         pauseStateDefaultsKey,
         disabledAppRulesDefaultsKey,
         perAppShortcutOverridesDefaultsKey,
+        doubleTapFullAcceptanceDefaultsKey,
         suggestInIntegratedTerminalsDefaultsKey,
         showCaretIndicatorDefaultsKey,
         selectedIndicatorModeDefaultsKey,
@@ -278,6 +282,8 @@ struct SuggestionSettingsStore {
         globalToggleKeyLabelDefaultsKey,
         acceptanceGranularityDefaultsKey,
         powerModelSwitchingEnabledDefaultsKey,
+        appleLanguageFallbackEnabledDefaultsKey,
+        keepFallbackModelLoadedDefaultsKey,
         batteryEngineDefaultsKey,
         batteryModelFilenameDefaultsKey,
         batteryEndpointModelNameDefaultsKey,
@@ -302,6 +308,10 @@ struct SuggestionSettingsStore {
         let resolvedPauseState = persistedPauseState?.activeState()
         let resolvedDisabledAppRules = loadDisabledAppRules()
         let resolvedPerAppShortcutOverrides = loadPerAppShortcutOverrides()
+        // Off by default: a fast second Tab has always accepted one more word, and turning it into a
+        // whole-suggestion accept is an opt-in change to that muscle memory.
+        let resolvedDoubleTapAcceptsEntireSuggestion =
+            userDefaults.object(forKey: Self.doubleTapFullAcceptanceDefaultsKey) as? Bool ?? false
         let resolvedShowIndicator: Bool = if let modeString = userDefaults.string(
             forKey: Self.selectedIndicatorModeDefaultsKey
         ) {
@@ -566,6 +576,11 @@ struct SuggestionSettingsStore {
 
         let resolvedPowerBasedModelSwitchingEnabled =
             userDefaults.object(forKey: Self.powerModelSwitchingEnabledDefaultsKey) as? Bool ?? false
+        // On by default: falling back is what Cotabby has always done for unsupported languages.
+        let resolvedAppleLanguageFallbackEnabled =
+            userDefaults.object(forKey: Self.appleLanguageFallbackEnabledDefaultsKey) as? Bool ?? true
+        let resolvedKeepsFallbackModelLoaded =
+            userDefaults.object(forKey: Self.keepFallbackModelLoadedDefaultsKey) as? Bool ?? false
         let resolvedBatteryEngine = userDefaults.string(forKey: Self.batteryEngineDefaultsKey)
             .flatMap(SuggestionEngineKind.init(rawValue:)) ?? .llamaOpenSource
         let resolvedBatteryModelFilename = userDefaults.string(forKey: Self.batteryModelFilenameDefaultsKey) ?? ""
@@ -597,7 +612,9 @@ struct SuggestionSettingsStore {
                 batteryEndpointModelName: resolvedBatteryEndpointModelName,
                 pluggedInEngine: resolvedPluggedInEngine,
                 pluggedInModelFilename: resolvedPluggedInModelFilename,
-                pluggedInEndpointModelName: resolvedPluggedInEndpointModelName
+                pluggedInEndpointModelName: resolvedPluggedInEndpointModelName,
+                isAppleLanguageFallbackEnabled: resolvedAppleLanguageFallbackEnabled,
+                keepsFallbackModelLoaded: resolvedKeepsFallbackModelLoaded
             ),
             completion: SuggestionCompletionSettings(
                 selectedWordCountPreset: resolvedWordCountPreset,
@@ -668,7 +685,8 @@ struct SuggestionSettingsStore {
                     modifiers: resolvedGlobalToggleKeyModifiers,
                     label: resolvedGlobalToggleKeyLabel
                 ),
-                perAppOverrides: resolvedPerAppShortcutOverrides
+                perAppOverrides: resolvedPerAppShortcutOverrides,
+                doubleTapAcceptsEntireSuggestion: resolvedDoubleTapAcceptsEntireSuggestion
             )
         )
 
@@ -741,8 +759,11 @@ struct SuggestionSettingsStore {
             label: data.globalToggleKeyLabel
         )
         savePerAppShortcutOverrides(data.perAppShortcutOverrides)
+        saveDoubleTapAcceptsEntireSuggestion(data.doubleTapAcceptsEntireSuggestion)
         saveAcceptanceGranularity(data.acceptanceGranularity)
         savePowerBasedModelSwitchingEnabled(data.isPowerBasedModelSwitchingEnabled)
+        saveAppleLanguageFallbackEnabled(data.isAppleLanguageFallbackEnabled)
+        saveKeepsFallbackModelLoaded(data.keepsFallbackModelLoaded)
         saveBatteryEngine(data.batteryEngine)
         saveBatteryModelFilename(data.batteryModelFilename)
         saveBatteryEndpointModelName(data.batteryEndpointModelName)
@@ -802,6 +823,10 @@ struct SuggestionSettingsStore {
         if let data = try? JSONEncoder().encode(rules) {
             userDefaults.set(data, forKey: Self.disabledAppRulesDefaultsKey)
         }
+    }
+
+    func saveDoubleTapAcceptsEntireSuggestion(_ enabled: Bool) {
+        userDefaults.set(enabled, forKey: Self.doubleTapFullAcceptanceDefaultsKey)
     }
 
     /// Removing the key for an empty list keeps reset state identical to a fresh install.
@@ -868,6 +893,14 @@ struct SuggestionSettingsStore {
 
     func saveOpenAICompatibleAPIMode(_ mode: OpenAICompatibleAPIMode) {
         userDefaults.set(mode.rawValue, forKey: Self.openAICompatibleAPIModeDefaultsKey)
+    }
+
+    func saveAppleLanguageFallbackEnabled(_ enabled: Bool) {
+        userDefaults.set(enabled, forKey: Self.appleLanguageFallbackEnabledDefaultsKey)
+    }
+
+    func saveKeepsFallbackModelLoaded(_ enabled: Bool) {
+        userDefaults.set(enabled, forKey: Self.keepFallbackModelLoadedDefaultsKey)
     }
 
     func savePowerBasedModelSwitchingEnabled(_ enabled: Bool) {

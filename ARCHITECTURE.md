@@ -201,7 +201,9 @@ event payloads as complete field state.
 
 FocusSnapshotResolver finds a usable editable candidate, blocks secure/unsupported surfaces (and
 Mail's compose header rows, [MailHeaderFieldDetector.swift](Cotabby/Support/Accessibility/MailHeaderFieldDetector.swift):
-Tab is the way from To to Subject to body there, not an accept), bounds
+Tab is the way from To to Subject to body there, not an accept; and single-line sign-in and
+verification fields, [CredentialFieldDetector.swift](Cotabby/Support/Accessibility/CredentialFieldDetector.swift):
+a completion there is a guess at the user's identity), bounds
 text on both sides of the caret, resolves the focused process, and publishes stable domain values.
 Chromium/Electron require accessibility priming, cursor hit-test recovery, and out-of-process iframe
 handling. All fallbacks are revalidated and yield to a valid system-focused element.
@@ -395,6 +397,22 @@ before marking a secure field blocked; that lower-level acquisition remains sepa
 
 Endpoint credentials are stored in Keychain. A remote endpoint receives its bounded, legacy-scope
 request; its privacy scope must remain visible in settings and documentation.
+
+Typing history (Settings → Context → Typing History) is the one store of the user's writing that
+outlives its field. Both of its switches are off by default. When recording is on,
+`TypingHistoryStore` keeps the text of fields where Cotabby is active (the same
+`SuggestionAvailabilityEvaluator` rule as suggestions; never secure fields, terminals, or excluded
+apps), one record per piece of writing (a chat composer that clears after sending yields one record
+per message), scrubs secret-like tokens and card numbers (`TypingHistoryScrubber`), and seals the
+archive with AES-GCM under a Keychain key that never syncs (`TypingHistoryVault`). Nothing is
+written until something is recorded or imported. Delete All removes the file and the key. A Cotypist
+`user_inputs.json` export can be imported. Only text that was before the caret is learned from,
+because the rest of a field is often a quoted thread. History shapes suggestions in two ways:
+`TypingHistoryIndex` adds two short passages of similar past writing to the prompt, and
+`TypingHistoryPhraseEngine` answers from `TypingHistoryPhrasePredictor` when history confidently
+knows how a phrase ends. Both are on-device only: the provider returns nothing
+for the endpoint, the request factory drops examples for it, and the router refuses to send any
+request that still carries them.
 
 ## Presentation and Sibling Features
 

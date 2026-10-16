@@ -39,12 +39,18 @@ struct InputMonitorKeyEvent {
     let characters: String
     let flags: CGEventFlags
     let keyboardLayout: KeyboardLayout
+    /// Mirrors `kCGKeyboardEventAutorepeat`: the key is being held, not pressed again.
+    let isAutorepeat: Bool
 
-    init(keyCode: CGKeyCode, characters: String = "", flags: CGEventFlags = [], keyboardLayout: KeyboardLayout = .unknown) {
+    init(
+        keyCode: CGKeyCode, characters: String = "", flags: CGEventFlags = [],
+        keyboardLayout: KeyboardLayout = .unknown, isAutorepeat: Bool = false
+    ) {
         self.keyCode = keyCode
         self.characters = characters
         self.flags = flags
         self.keyboardLayout = keyboardLayout
+        self.isAutorepeat = isAutorepeat
     }
 
     /// True when this is the key above Tab, judged by the keyboard it came from.
@@ -634,8 +640,13 @@ final class InputMonitor {
                 return Unmanaged.passUnretained(event)
             }
 
+            // Holding Accept Word repeats its key-down. The flag lets double-tap recognition treat
+            // those repeats as one long press instead of a second tap.
             let keyEvent = InputMonitorKeyEvent(
-                keyCode: keyCode(from: event), flags: event.flags, keyboardLayout: .init(event: event)
+                keyCode: keyCode(from: event),
+                flags: event.flags,
+                keyboardLayout: .init(event: event),
+                isAutorepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0
             )
             switch resolveAcceptKeyDown(keyEvent) {
             case .consume:
@@ -703,7 +714,8 @@ final class InputMonitor {
             kind: kind,
             keyCode: keyEvent.keyCode,
             characters: "",
-            flags: keyEvent.flags
+            flags: keyEvent.flags,
+            isAutorepeat: keyEvent.isAutorepeat
         )
         guard onEvent(capturedEvent) else {
             if ownsKeyWhenIdle {

@@ -28,6 +28,7 @@ final class SettingsCoordinator: NSObject, NSWindowDelegate {
     private let phraseMemoryStore: PhraseMemoryStore
     private let personalWordStore: PersonalWordStore
     private let suggestionUsageLog: SuggestionUsageLog
+    private let typingHistoryStore: TypingHistoryStore
 
     private var settingsWindowController: NSWindowController?
 
@@ -55,7 +56,8 @@ final class SettingsCoordinator: NSObject, NSWindowDelegate {
         clearEmojiHistory: @escaping () -> Void,
         phraseMemoryStore: PhraseMemoryStore,
         personalWordStore: PersonalWordStore,
-        suggestionUsageLog: SuggestionUsageLog
+        suggestionUsageLog: SuggestionUsageLog,
+        typingHistoryStore: TypingHistoryStore
     ) {
         self.appUpdateManager = appUpdateManager
         self.permissionManager = permissionManager
@@ -74,6 +76,7 @@ final class SettingsCoordinator: NSObject, NSWindowDelegate {
         self.phraseMemoryStore = phraseMemoryStore
         self.personalWordStore = personalWordStore
         self.suggestionUsageLog = suggestionUsageLog
+        self.typingHistoryStore = typingHistoryStore
     }
 
     /// Shows the settings window, reusing the existing instance if it is already open.
@@ -106,6 +109,7 @@ final class SettingsCoordinator: NSObject, NSWindowDelegate {
                     phraseMemoryStore: phraseMemoryStore,
                     personalWordStore: personalWordStore,
                     suggestionUsageLog: suggestionUsageLog,
+                    typingHistoryStore: typingHistoryStore,
                     onQuit: { NSApplication.shared.terminate(nil) }
                 )
             )

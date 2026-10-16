@@ -31,6 +31,7 @@ enum BaseCompletionPromptRenderer {
         clipboardContext: String? = nil,
         visualContextSummary: String? = nil,
         surfaceContext: SurfaceContext? = nil,
+        historyExamples: [String] = [],
         usesCompactSurfaceContext: Bool = false,
         contextBudget: Int = defaultContextBudget,
         maxScreenCharacters: Int = 4000,
@@ -69,6 +70,9 @@ enum BaseCompletionPromptRenderer {
             // sentence this writer finishes this way, rather than describing their situation. Below
             // the language hint, because getting the language wrong is worse than missing a habit.
             sections.append(Self.contextSection("phrases", phrases, priority: 45, maxChars: 300))
+        }
+        if let history = Self.historySection(historyExamples) {
+            sections.append(history)
         }
         if let clip = Self.nonEmpty(clipboardContext) {
             sections.append(Self.contextSection("clipboard", "On the clipboard: \(clip)", priority: 35, maxChars: 400))
@@ -112,19 +116,7 @@ enum BaseCompletionPromptRenderer {
             )
         )
 
-        // Token-aware budgeting (opt-in): when a token budget is supplied, fill sections against an
-        // estimated-token window instead of the character approximation. Defaults to the character
-        // path so shipped behavior is unchanged.
-        let kept: [PromptSection]
-        if let tokenBudget {
-            kept = PromptSectionBudget.allocate(
-                sections,
-                totalTokens: tokenBudget,
-                estimate: TokenCountEstimator.estimate
-            )
-        } else {
-            kept = PromptSectionBudget.allocate(sections, totalChars: contextBudget)
-        }
+        let kept = allocate(sections, contextBudget: contextBudget, tokenBudget: tokenBudget)
         let prefix = kept.first { $0.name == "prefix" }?.content ?? ""
         let preface = kept.filter { $0.name != "prefix" }.map(\.content)
 
@@ -137,6 +129,16 @@ enum BaseCompletionPromptRenderer {
         return preface.joined(separator: "\n") + "\n\n" + prefix
     }
 
+    /// Token-aware budgeting (opt-in): when a token budget is supplied, fill sections against an
+    /// estimated-token window instead of the character approximation. Defaults to the character
+    /// path so shipped behavior is unchanged.
+    private static func allocate(_ sections: [PromptSection], contextBudget: Int, tokenBudget: Int?) -> [PromptSection] {
+        guard let tokenBudget else {
+            return PromptSectionBudget.allocate(sections, totalChars: contextBudget)
+        }
+        return PromptSectionBudget.allocate(sections, totalTokens: tokenBudget, estimate: TokenCountEstimator.estimate)
+    }
+
     /// Surface metadata is one optional section; its representation does not affect budgeting.
     private static func surfaceSection(_ surface: SurfaceContext?, compact: Bool) -> PromptSection? {
         guard let surface else { return nil }
@@ -147,6 +149,38 @@ enum BaseCompletionPromptRenderer {
         guard !lines.isEmpty else { return nil }
         return contextSection("surface", lines.joined(separator: " "), priority: 70, maxChars: 240)
     }
+
+    /// The user's own earlier sentences, quoted. A base model conditions strongly on nearby text in
+    /// the same voice, so a couple of real examples pull its word choice toward how this person
+    /// writes. Sits after the stable preface and before the per-keystroke clipboard and screen
+    /// sections: the examples change only every few words (`TypingHistoryQuery.stableText`), so
+    /// placing them earlier keeps more of the prompt's head reusable from the KV cache.
+    ///
+    /// All or nothing, like the "following" section: a budget-trimmed history section could end
+    /// on an unclosed quote, and the model would then read the live caret text as part of that
+    /// quote. Examples are dropped whole until the section fits its cap.
+    private static func historySection(_ examples: [String]) -> PromptSection? {
+        let heading = "Earlier writing by the same author:"
+        var content = heading
+        for example in examples {
+            let trimmed = example.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            let line = "\n“\(trimmed)”"
+            guard content.count + line.count <= historyMaxCharacters else { continue }
+            content += line
+        }
+        guard content.count > heading.count else { return nil }
+        return PromptSection(
+            name: "history",
+            content: content,
+            priority: 38,
+            minChars: content.count,
+            maxChars: content.count,
+            truncation: .preserveStart
+        )
+    }
+
+    private static let historyMaxCharacters = 760
 
     private static func contextSection(
         _ name: String,

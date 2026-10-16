@@ -33,6 +33,8 @@ struct ContextPaneView: View {
     @ObservedObject var personalWordStore: PersonalWordStore
     /// The opt-in outcome log. Observed here so the toggle and record count stay live.
     @ObservedObject var suggestionUsageLog: SuggestionUsageLog
+    /// Owned by `CotabbyAppEnvironment`; drives the Typing History section.
+    @ObservedObject var typingHistory: TypingHistoryStore
 
     private static let previewEditorMinHeight: CGFloat = 132
     private static let extendedContextEditorMinHeight: CGFloat = 220
@@ -44,6 +46,7 @@ struct ContextPaneView: View {
             usageLogSection
             extendedContextSection
             howThisIsUsedSection
+            TypingHistorySectionView(store: typingHistory)
         }
     }
 

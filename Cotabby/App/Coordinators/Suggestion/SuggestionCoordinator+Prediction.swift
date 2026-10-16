@@ -139,7 +139,8 @@ extension SuggestionCoordinator {
             clipboardContext: clipboardContext,
             visualContextSummary: visualContextSummary,
             phraseMemory: phraseMemoryStore.snapshot(),
-            keyboardLanguageCode: keyboardLanguageCodeProvider()
+            keyboardLanguageCode: keyboardLanguageCodeProvider(),
+            historyExamples: historyExamples(for: context)
         )
         latestGenerationNumber = context.generation
         let request = withOutcomeFeedback(requestBuildResult.request)
@@ -455,7 +456,8 @@ extension SuggestionCoordinator {
             clipboardContext: clipboardContext,
             visualContextSummary: visualContextSummary,
             phraseMemory: phraseMemoryStore.snapshot(),
-            keyboardLanguageCode: keyboardLanguageCodeProvider()
+            keyboardLanguageCode: keyboardLanguageCodeProvider(),
+            historyExamples: historyExamples(for: context)
         )
         latestGenerationNumber = context.generation
         let request = withOutcomeFeedback(requestBuildResult.request)
@@ -527,7 +529,8 @@ extension SuggestionCoordinator {
             clipboardContext: pinnedClipboardContext(rawContext: optimistic),
             visualContextSummary: permissionManager.screenRecordingGranted
                 ? visualContextCoordinator.excerpt(for: context)
-                : nil
+                : nil,
+            historyExamples: historyExamples(for: context)
         )
         let request = requestBuildResult.request
         let suggestionEngine = suggestionEngine

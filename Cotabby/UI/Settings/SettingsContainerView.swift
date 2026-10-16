@@ -33,6 +33,8 @@ struct SettingsContainerView: View {
     @ObservedObject var phraseMemoryStore: PhraseMemoryStore
     @ObservedObject var personalWordStore: PersonalWordStore
     @ObservedObject var suggestionUsageLog: SuggestionUsageLog
+    /// Owned by `CotabbyAppEnvironment`; the Context pane observes it for the Typing History section.
+    let typingHistoryStore: TypingHistoryStore
     let onQuit: () -> Void
 
     @AppStorage("cotabbySettingsSelectedCategoryV2")
@@ -152,7 +154,8 @@ struct SettingsContainerView: View {
                 suggestionSettings: suggestionSettings,
                 phraseMemoryStore: phraseMemoryStore,
                 personalWordStore: personalWordStore,
-                suggestionUsageLog: suggestionUsageLog
+                suggestionUsageLog: suggestionUsageLog,
+                typingHistory: typingHistoryStore
             )
         case .shortcuts:
             ShortcutsPaneView(suggestionSettings: suggestionSettings)
