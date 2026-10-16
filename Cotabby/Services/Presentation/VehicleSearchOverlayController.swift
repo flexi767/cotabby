@@ -106,6 +106,9 @@ final class VehicleSearchOverlayController: NSObject {
             group.orientation = .horizontal
             group.spacing = Self.spacing
             group.alignment = .centerY
+            if let specs = lot.vehicle.specs, let summary = specs.summary {
+                group.addArrangedSubview(specsLabel(summary, specs: specs))
+            }
             if let fees = lot.fees { group.addArrangedSubview(feeLabel(fees)) }
             for target in [AuctionVehicle.SearchTarget.mobileDE, .mobileBG] {
                 group.addArrangedSubview(searchButton(target: target, vehicleIndex: index))
@@ -147,9 +150,6 @@ final class VehicleSearchOverlayController: NSObject {
     private func feeLabel(_ fees: CopartFees.Breakdown) -> NSView {
         var numbers = [CopartFees.format(fees.fees), CopartFees.format(fees.total)]
         if let gross = fees.totalIncludingVAT { numbers.append(CopartFees.format(gross)) }
-        let label = NSTextField(labelWithString: numbers.joined(separator: " · "))
-        label.font = .monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
-        label.textColor = .labelColor
         var parts = [
             "Gebot \(CopartFees.format(fees.salePrice))",
             "Käufergebühr \(CopartFees.format(fees.buyerFee))",
@@ -161,11 +161,32 @@ final class VehicleSearchOverlayController: NSObject {
             parts.append("Gesamt inkl. 19% MwSt. \(CopartFees.format(gross)) (Verkauf zzgl. MwSt.)")
         }
         parts.append("Gebühren netto (Copart, Stand Januar 2025)")
+        return pill(numbers.joined(separator: " · "), toolTip: parts.joined(separator: "\n"))
+    }
+
+    /// "08/17 · 03/20 · 85kW · 1598cc · D": the Informex expert data, values only (`Specs.summary`);
+    /// the labelled values are in the tooltip.
+    private func specsLabel(_ summary: String, specs: AuctionVehicle.Specs) -> NSView {
+        let parts = [
+            specs.firstRegistration.map { "Eerste inschr \($0)" },
+            specs.lastRegistration.map { "Laatste inschr \($0)" },
+            specs.power.map { "Vermogen \($0)" },
+            specs.displacement.map { "Cilinderinhoud \($0)" },
+            specs.brandstof.map { "Brandstof \($0)" },
+        ].compactMap { $0 }
+        return pill(summary, toolTip: parts.joined(separator: "\n"))
+    }
+
+    /// A rounded label as tall as the buttons, on the same background.
+    private func pill(_ text: String, toolTip: String) -> NSView {
+        let label = NSTextField(labelWithString: text)
+        label.font = .monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
+        label.textColor = .labelColor
         let pill = NSView()
         pill.wantsLayer = true
         pill.layer?.cornerRadius = 5
         pill.layer?.backgroundColor = Self.textFallbackBackground
-        pill.toolTip = parts.joined(separator: "\n")
+        pill.toolTip = toolTip
         label.translatesAutoresizingMaskIntoConstraints = false
         pill.addSubview(label)
         NSLayoutConstraint.activate([

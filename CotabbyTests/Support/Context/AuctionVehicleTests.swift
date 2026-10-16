@@ -12,13 +12,60 @@ final class AuctionVehicleTests: XCTestCase {
 
     func testReadsTheExpertVehicleData() {
         XCTAssertEqual(AuctionVehicle.parse(pageTexts: livePage),
-                       AuctionVehicle(make: "AUDI", model: "Q6 e-tron", firstRegistrationYear: 2025))
+                       AuctionVehicle(make: "AUDI", model: "Q6 e-tron", firstRegistrationYear: 2025,
+                                      specs: AuctionVehicle.Specs(firstRegistration: "26-05-2025")))
     }
 
     func testFallsBackToTheModelWithoutItsYearAndReadsFrenchLabels() {
         let french = ["Marque", "BMW", "Modèle", "320d Touring (2019)", "1ère immat", "14/03/2019"]
         XCTAssertEqual(AuctionVehicle.parse(pageTexts: french),
-                       AuctionVehicle(make: "BMW", model: "320d Touring", firstRegistrationYear: 2019))
+                       AuctionVehicle(make: "BMW", model: "320d Touring", firstRegistrationYear: 2019,
+                                      specs: AuctionVehicle.Specs(firstRegistration: "14/03/2019")))
+    }
+
+    /// The expert data block with the registration, power, displacement and fuel rows (live labels).
+    private let expertData = [
+        "Merk", "VOLKSWAGEN", "Model", "Golf (2017)", "Eerste inschr", "28-08-2017", "Laatste inschr", "03-03-2020",
+        "Vermogen", "85 kW", "Cilinderinhoud", "1598 cc", "Brandstof", "Diesel", "KM", "75.848 KM",
+    ]
+
+    func testShowsTheExpertDataAsShortValues() throws {
+        let vehicle = try XCTUnwrap(AuctionVehicle.parse(pageTexts: expertData))
+        XCTAssertEqual(vehicle.specs?.summary, "08/17 · 03/20 · 85kW · 1598cc · D")
+        XCTAssertEqual(vehicle.fuel, .diesel)
+        XCTAssertEqual(vehicle.firstRegistrationYear, 2017)
+    }
+
+    func testEveryHybridVariantIsAHybridAndEachFuelHasItsLetter() {
+        for brandstof in ["Hybride", "Hybride benzine", "Hybride diesel", "Plug-in hybride", "HYBRIDE ESSENCE"] {
+            XCTAssertEqual(AuctionVehicle.Fuel(brandstof: brandstof), .hybrid, brandstof)
+        }
+        let letters = ["Diesel": "D", "Benzine": "B", "Elektrisch": "E", "LPG": "G", "Essence": "B", "Électrique": "E"]
+        for (brandstof, letter) in letters {
+            XCTAssertEqual(AuctionVehicle.Fuel(brandstof: brandstof)?.letter, letter, brandstof)
+        }
+        XCTAssertNil(AuctionVehicle.Fuel(brandstof: "Waterstof"), "an unknown fuel sets no filter")
+    }
+
+    func testShortensWhatItCanAndKeepsTheRest() {
+        typealias Specs = AuctionVehicle.Specs
+        XCTAssertEqual(Specs.monthYear("5.3.2020"), "03/20")
+        XCTAssertEqual(Specs.monthYear("onbekend"), "onbekend")
+        XCTAssertEqual(Specs.compact("85 kW (116 pk)", unit: "kW"), "85kW")
+        XCTAssertEqual(Specs.compact("1.598 cm³", unit: "cc"), "1598cc")
+        XCTAssertEqual(Specs(brandstof: "Waterstof").summary, "Waterstof", "an unknown fuel is shown as written")
+        XCTAssertEqual(Specs(firstRegistration: "28-08-2017").summary, "08/17", "missing rows are left out")
+        XCTAssertNil(Specs().summary)
+        XCTAssertNil(AuctionVehicle.parse(pageTexts: livePage.filter { $0 != "Eerste inschr" && $0 != "26-05-2025" })?.specs,
+                     "a page without any of these rows shows no details pill")
+    }
+
+    func testTheSearchLinkCarriesTheFuel() throws {
+        let vehicle = try XCTUnwrap(AuctionVehicle.parse(pageTexts: expertData.map { $0 == "Diesel" ? "Hybride benzine" : $0 }))
+        let items = URLComponents(url: try XCTUnwrap(vehicle.searchURL(for: .mobileBG)), resolvingAgainstBaseURL: false)?.queryItems
+        XCTAssertEqual(items?.first { $0.name == "fuel" }?.value, "hybrid")
+        XCTAssertFalse(try XCTUnwrap(AuctionVehicle.parse(pageTexts: livePage)?.searchURL(for: .mobileBG))
+            .absoluteString.contains("fuel="), "no Brandstof, no fuel filter")
     }
 
     func testNoMakeNoVehicle() {

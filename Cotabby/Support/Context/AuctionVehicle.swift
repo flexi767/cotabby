@@ -30,12 +30,94 @@ nonisolated struct AuctionVehicle: Equatable, Sendable {
     /// Year of first registration (Copart: the model year when the lot shows no registration).
     let firstRegistrationYear: Int?
     var source: Source = .informex
+    /// The fuel the search filters on (Informex "Brandstof"), nil when the page names none or one
+    /// the search does not know.
+    var fuel: Fuel?
+    /// The expert data the address-bar panel shows in short (Informex only).
+    var specs: Specs?
+
+    /// The fuels scrapeui's search knows, by the code its link carries.
+    enum Fuel: String, Sendable {
+        case diesel, petrol, hybrid, electric, lpg
+
+        /// One letter for the panel: D, B (Benzine), H, E, G (gas).
+        var letter: String {
+            switch self {
+            case .diesel: "D"
+            case .petrol: "B"
+            case .hybrid: "H"
+            case .electric: "E"
+            case .lpg: "G"
+            }
+        }
+
+        /// Reads Informex's "Brandstof" ("Diesel", "Benzine", "Elektrisch", "LPG", French
+        /// "Essence", "Électrique", "GPL"). Every hybrid variant ("Hybride", "Hybride benzine",
+        /// "Hybride diesel", "Plug-in hybride") is a hybrid, checked first, since "Hybride diesel"
+        /// also names diesel.
+        init?(brandstof: String) {
+            let value = brandstof.lowercased()
+            if value.contains("hybr") { self = .hybrid }
+            else if value.contains("elektr") || value.contains("électr") || value.contains("electr") { self = .electric }
+            else if value.contains("diesel") { self = .diesel }
+            else if value.contains("benzine") || value.contains("essence") || value.contains("petrol") { self = .petrol }
+            else if value.contains("lpg") || value.contains("gpl") { self = .lpg }
+            else { return nil }
+        }
+    }
+
+    /// Informex's expert data, as the page shows it: "28-08-2017", "85 kW", "1598 cc", "Diesel".
+    struct Specs: Equatable, Sendable {
+        var firstRegistration: String?
+        var lastRegistration: String?
+        var power: String?
+        var displacement: String?
+        var brandstof: String?
+
+        /// Only the values, short: "08/17 · 03/20 · 85kW · 1598cc · D" (the writer's choice: no day,
+        /// no label, one letter for the fuel, and no space before a unit). Empty parts are left
+        /// out; nil when nothing is known.
+        var summary: String? {
+            let parts = [
+                firstRegistration.map(Self.monthYear),
+                lastRegistration.map(Self.monthYear),
+                power.map { Self.compact($0, unit: "kW") },
+                displacement.map { Self.compact($0, unit: "cc") },
+                brandstof.map { Fuel(brandstof: $0)?.letter ?? $0 },
+            ].compactMap { $0 }.filter { !$0.isEmpty }
+            return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        }
+
+        /// "28-08-2017" (or "28.08.2017", "28/08/2017") -> "08/17"; anything else as shown.
+        static func monthYear(_ date: String) -> String {
+            let pattern = #"^\s*\d{1,2}[-./](\d{1,2})[-./](?:19|20)(\d{2})\s*$"#
+            guard let regex = try? NSRegularExpression(pattern: pattern),
+                  let match = regex.firstMatch(in: date, range: NSRange(date.startIndex..., in: date)),
+                  let month = Range(match.range(at: 1), in: date), let year = Range(match.range(at: 2), in: date)
+            else { return date.trimmingCharacters(in: .whitespaces) }
+            let monthText = String(date[month])
+            return "\(monthText.count == 1 ? "0" + monthText : monthText)/\(date[year])"
+        }
+
+        /// "85 kW" -> "85kW", "1.598 cc" -> "1598cc": the first number with the unit; the value as
+        /// shown when it has no number.
+        static func compact(_ value: String, unit: String) -> String {
+            guard let range = value.range(of: #"\d[\d.]*"#, options: .regularExpression) else {
+                return value.trimmingCharacters(in: .whitespaces)
+            }
+            return value[range].replacingOccurrences(of: ".", with: "") + unit
+        }
+    }
 
     private static let informexLabels: [String: [String]] = [
         "make": ["merk", "marque"],
         "model": ["model", "modèle", "modele"],
         "type": ["type"],
         "firstRegistration": ["eerste inschr", "eerste inschrijving", "1ère immat", "1ere immat", "première immatriculation"],
+        "lastRegistration": ["laatste inschr", "laatste inschrijving", "dernière immat", "derniere immat"],
+        "power": ["vermogen", "puissance"],
+        "displacement": ["cilinderinhoud", "cylindrée", "cylindree"],
+        "fuel": ["brandstof", "carburant"],
     ]
 
     private static let copartLabels: [String: [String]] = [
@@ -56,7 +138,11 @@ nonisolated struct AuctionVehicle: Equatable, Sendable {
         let values = labeledValues(in: pageTexts, labels: informexLabels)
         guard let make = values["make"], !make.isEmpty else { return nil }
         let model = (values["type"].flatMap(nonEmpty) ?? values["model"].map(withoutModelYear).flatMap(nonEmpty))
-        return AuctionVehicle(make: make, model: model, firstRegistrationYear: values["firstRegistration"].flatMap(year))
+        let specs = Specs(firstRegistration: values["firstRegistration"], lastRegistration: values["lastRegistration"],
+                          power: values["power"], displacement: values["displacement"], brandstof: values["fuel"])
+        return AuctionVehicle(make: make, model: model, firstRegistrationYear: values["firstRegistration"].flatMap(year),
+                              fuel: values["fuel"].flatMap(Fuel.init(brandstof:)),
+                              specs: specs.summary == nil ? nil : specs)
     }
 
     /// The vehicle on a Copart lot page, or nil when the page names no make.
@@ -154,6 +240,7 @@ nonisolated struct AuctionVehicle: Equatable, Sendable {
         var items = [URLQueryItem(name: "make", value: make)]
         if let model { items.append(URLQueryItem(name: "model", value: model)) }
         if let firstRegistrationYear { items.append(URLQueryItem(name: "year", value: String(firstRegistrationYear))) }
+        if let fuel { items.append(URLQueryItem(name: "fuel", value: fuel.rawValue)) }
         items.append(URLQueryItem(name: "target", value: target.rawValue))
         items.append(URLQueryItem(name: "source", value: source.rawValue))
         components?.queryItems = items
