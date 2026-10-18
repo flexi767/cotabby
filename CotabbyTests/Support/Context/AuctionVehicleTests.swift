@@ -33,12 +33,20 @@ final class AuctionVehicleTests: XCTestCase {
         let vehicle = try XCTUnwrap(AuctionVehicle.parse(pageTexts: expertData))
         XCTAssertEqual(vehicle.specs?.summary, "08/17 · 03/20 · 85kW · 1598cc · D")
         XCTAssertEqual(vehicle.fuel, .diesel)
+        XCTAssertEqual(vehicle.powerKW, 85)
         XCTAssertEqual(vehicle.firstRegistrationYear, 2017)
     }
 
     func testEveryHybridVariantIsAHybridAndEachFuelHasItsLetter() {
-        for brandstof in ["Hybride", "Hybride benzine", "Hybride diesel", "Plug-in hybride", "HYBRIDE ESSENCE"] {
+        for brandstof in ["Hybride", "Hybride benzine", "Hybride diesel", "HYBRIDE ESSENCE", "Hybrid"] {
             XCTAssertEqual(AuctionVehicle.Fuel(brandstof: brandstof), .hybrid, brandstof)
+        }
+        for brandstof in ["Plug-in hybride", "Hybride plug-in benzine", "PHEV", "Plug-in-Hybrid"] {
+            XCTAssertEqual(AuctionVehicle.Fuel(brandstof: brandstof), .pluginHybrid, brandstof)
+            XCTAssertEqual(AuctionVehicle.Fuel(brandstof: brandstof)?.letter, "H", "still H in the panel")
+        }
+        for (kraftstoff, fuel) in [("Benzin", AuctionVehicle.Fuel.petrol), ("Elektro", .electric), ("Autogas", .lpg)] {
+            XCTAssertEqual(AuctionVehicle.Fuel(brandstof: kraftstoff), fuel, kraftstoff)
         }
         let letters = ["Diesel": "D", "Benzine": "B", "Elektrisch": "E", "LPG": "G", "Essence": "B", "Électrique": "E"]
         for (brandstof, letter) in letters {
@@ -58,6 +66,22 @@ final class AuctionVehicleTests: XCTestCase {
         XCTAssertNil(Specs().summary)
         XCTAssertNil(AuctionVehicle.parse(pageTexts: livePage.filter { $0 != "Eerste inschr" && $0 != "26-05-2025" })?.specs,
                      "a page without any of these rows shows no details pill")
+    }
+
+    func testReadsPowerOnlyWhenItIsInKilowatts() {
+        XCTAssertEqual(AuctionVehicle.kilowatts("85 kW"), 85)
+        XCTAssertEqual(AuctionVehicle.kilowatts("85 kW (116 pk)"), 85)
+        XCTAssertEqual(AuctionVehicle.kilowatts("110kw"), 110)
+        XCTAssertNil(AuctionVehicle.kilowatts("116 pk"), "horsepower alone is not converted")
+        XCTAssertNil(AuctionVehicle.kilowatts("onbekend"))
+    }
+
+    func testTheSearchLinkCarriesThePlugInFuelAndThePower() throws {
+        let plugin = expertData.map { $0 == "Diesel" ? "Plug-in hybride" : $0 }
+        let url = try XCTUnwrap(AuctionVehicle.parse(pageTexts: plugin)?.searchURL(for: .mobileBG))
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(items.first { $0.name == "fuel" }?.value, "plugin-hybrid")
+        XCTAssertEqual(items.first { $0.name == "power" }?.value, "85")
     }
 
     func testTheSearchLinkCarriesTheFuel() throws {
@@ -83,7 +107,19 @@ final class AuctionVehicleTests: XCTestCase {
 
     func testReadsACopartLot() {
         XCTAssertEqual(AuctionVehicle.parseCopart(pageTexts: copartLot),
-                       AuctionVehicle(make: "BMW", model: "i7", firstRegistrationYear: 2025, source: .copart))
+                       AuctionVehicle(make: "BMW", model: "i7", firstRegistrationYear: 2025, source: .copart,
+                                      fuel: .electric), "Kraftstoff: Elektrisch sets the fuel")
+    }
+
+    func testACopartBoardCarriesFuelAndPowerIntoTheLink() throws {
+        let details = ["Erstzulassungsdatum", "29/09/2025", "Kraftstoff", "Benzin", "Motorleistung", "72 kW"]
+        let board = try XCTUnwrap(AuctionVehicle.parseCopartBoard(title: "2025 Toyota Corolla", detailTexts: details))
+        XCTAssertEqual(board.fuel, .petrol)
+        XCTAssertEqual(board.powerKW, 72)
+        let items = URLComponents(url: try XCTUnwrap(board.searchURL(for: .mobileBG)), resolvingAgainstBaseURL: false)?
+            .queryItems ?? []
+        XCTAssertEqual(items.first { $0.name == "fuel" }?.value, "petrol")
+        XCTAssertEqual(items.first { $0.name == "power" }?.value, "72")
     }
 
     func testACopartLotWithoutRegistrationUsesItsModelYear() {

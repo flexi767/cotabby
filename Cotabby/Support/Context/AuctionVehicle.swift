@@ -30,38 +30,45 @@ nonisolated struct AuctionVehicle: Equatable, Sendable {
     /// Year of first registration (Copart: the model year when the lot shows no registration).
     let firstRegistrationYear: Int?
     var source: Source = .informex
-    /// The fuel the search filters on (Informex "Brandstof"), nil when the page names none or one
-    /// the search does not know.
+    /// The fuel the search filters on (Informex "Brandstof", Copart "Kraftstoff"), nil when the
+    /// page names none or one the search does not know.
     var fuel: Fuel?
+    /// Engine power in kW (Informex "Vermogen", Copart "Motorleistung"): scrapeui searches +-5 hp
+    /// around it.
+    var powerKW: Int?
     /// The expert data the address-bar panel shows in short (Informex only).
     var specs: Specs?
 
     /// The fuels scrapeui's search knows, by the code its link carries.
     enum Fuel: String, Sendable {
         case diesel, petrol, hybrid, electric, lpg
+        /// A plug-in hybrid: scrapeui searches mobile.bg's own "Plug-in хибрид" option for it.
+        case pluginHybrid = "plugin-hybrid"
 
         /// One letter for the panel: D, B (Benzine), H, E, G (gas).
         var letter: String {
             switch self {
             case .diesel: "D"
             case .petrol: "B"
-            case .hybrid: "H"
+            case .hybrid, .pluginHybrid: "H"
             case .electric: "E"
             case .lpg: "G"
             }
         }
 
         /// Reads Informex's "Brandstof" ("Diesel", "Benzine", "Elektrisch", "LPG", French
-        /// "Essence", "Électrique", "GPL"). Every hybrid variant ("Hybride", "Hybride benzine",
-        /// "Hybride diesel", "Plug-in hybride") is a hybrid, checked first, since "Hybride diesel"
+        /// "Essence", "Électrique", "GPL") and Copart's "Kraftstoff" ("Benzin", "Elektro",
+        /// "Autogas"). A plug-in ("Plug-in hybride", "PHEV") is checked first, then every other
+        /// hybrid variant ("Hybride", "Hybride benzine", "Hybride diesel"), since "Hybride diesel"
         /// also names diesel.
         init?(brandstof: String) {
             let value = brandstof.lowercased()
-            if value.contains("hybr") { self = .hybrid }
+            if value.contains("plug") || value.contains("phev") { self = .pluginHybrid }
+            else if value.contains("hybr") { self = .hybrid }
             else if value.contains("elektr") || value.contains("électr") || value.contains("electr") { self = .electric }
             else if value.contains("diesel") { self = .diesel }
-            else if value.contains("benzine") || value.contains("essence") || value.contains("petrol") { self = .petrol }
-            else if value.contains("lpg") || value.contains("gpl") { self = .lpg }
+            else if value.contains("benzin") || value.contains("essence") || value.contains("petrol") { self = .petrol }
+            else if value.contains("lpg") || value.contains("gpl") || value.contains("autogas") { self = .lpg }
             else { return nil }
         }
     }
@@ -125,6 +132,8 @@ nonisolated struct AuctionVehicle: Equatable, Sendable {
         "model": ["modell", "model"],
         "year": ["jahr", "year"],
         "firstRegistration": ["erstzulassung", "erstzulassungsdatum", "first registration", "registration date"],
+        "fuel": ["kraftstoff", "fuel"],
+        "power": ["motorleistung", "leistung"],
     ]
 
     /// Makes whose name is two words in a Copart title ("2019 Land Rover Discovery ..."); any other
@@ -142,6 +151,7 @@ nonisolated struct AuctionVehicle: Equatable, Sendable {
                           power: values["power"], displacement: values["displacement"], brandstof: values["fuel"])
         return AuctionVehicle(make: make, model: model, firstRegistrationYear: values["firstRegistration"].flatMap(year),
                               fuel: values["fuel"].flatMap(Fuel.init(brandstof:)),
+                              powerKW: values["power"].flatMap(kilowatts),
                               specs: specs.summary == nil ? nil : specs)
     }
 
@@ -151,7 +161,8 @@ nonisolated struct AuctionVehicle: Equatable, Sendable {
         guard let make = values["make"], !make.isEmpty else { return nil }
         let year = values["firstRegistration"].flatMap(year) ?? values["year"].flatMap(year)
         return AuctionVehicle(make: make, model: values["model"].flatMap(nonEmpty), firstRegistrationYear: year,
-                              source: .copart)
+                              source: .copart, fuel: values["fuel"].flatMap(Fuel.init(brandstof:)),
+                              powerKW: values["power"].flatMap(kilowatts))
     }
 
     /// The car on one board of Copart's live auction dashboard, which shows a title ("2025 Toyota
@@ -173,7 +184,8 @@ nonisolated struct AuctionVehicle: Equatable, Sendable {
         let values = labeledValues(in: detailTexts, labels: copartLabels)
         return AuctionVehicle(make: make, model: model,
                               firstRegistrationYear: values["firstRegistration"].flatMap(year) ?? titleYear,
-                              source: .copart)
+                              source: .copart, fuel: values["fuel"].flatMap(Fuel.init(brandstof:)),
+                              powerKW: values["power"].flatMap(kilowatts))
     }
 
     /// True for Copart's live auction dashboard (`copart.<tld>/auctionDashboard`).
@@ -210,6 +222,14 @@ nonisolated struct AuctionVehicle: Equatable, Sendable {
 
     private static func nonEmpty(_ text: String) -> String? { text.isEmpty ? nil : text }
 
+    /// "85 kW", "85 kW (116 pk)", "72kW" -> 85 / 72: the number before "kW", nil without one (a
+    /// value in hp alone is not converted, so the search is never narrowed by a guess).
+    static func kilowatts(_ text: String) -> Int? {
+        guard let range = text.range(of: #"(\d{1,4})\s*kw"#, options: [.regularExpression, .caseInsensitive]),
+              let number = Int(text[range].prefix { $0.isNumber }), number > 0 else { return nil }
+        return number
+    }
+
     /// "Q6 e-tron (2024)" -> "Q6 e-tron".
     static func withoutModelYear(_ model: String) -> String {
         model.replacingOccurrences(of: #"\s*\(\d{4}\)\s*$"#, with: "", options: .regularExpression)
@@ -241,6 +261,7 @@ nonisolated struct AuctionVehicle: Equatable, Sendable {
         if let model { items.append(URLQueryItem(name: "model", value: model)) }
         if let firstRegistrationYear { items.append(URLQueryItem(name: "year", value: String(firstRegistrationYear))) }
         if let fuel { items.append(URLQueryItem(name: "fuel", value: fuel.rawValue)) }
+        if let powerKW { items.append(URLQueryItem(name: "power", value: String(powerKW))) }
         items.append(URLQueryItem(name: "target", value: target.rawValue))
         items.append(URLQueryItem(name: "source", value: source.rawValue))
         components?.queryItems = items
