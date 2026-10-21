@@ -35,6 +35,8 @@ final class CotabbyAppEnvironment {
     let emojiPickerController: EmojiPickerController
     let macroController: MacroController
     let inlineCommandCoordinator: InlineCommandCoordinator
+    /// Shares the loaded llama model with other apps over 127.0.0.1 (off by default; see the type).
+    let localModelEndpoint: LocalModelEndpoint
     let emojiUsageStore: EmojiUsageStore
     let phraseMemoryStore: PhraseMemoryStore
     let personalWordStore: PersonalWordStore
@@ -413,6 +415,10 @@ final class CotabbyAppEnvironment {
         self.performanceMetricsStore = performanceMetricsStore
         self.qualityMetricsStore = qualityMetricsStore
         self.typingHistoryStore = typingHistoryStore
+        // One model for Cotabby and the dictation apps that point their "Custom" provider here. Not
+        // in the test host, where nothing should bind a port.
+        localModelEndpoint = LocalModelEndpoint(runtime: runtimeManager)
+        if !isTestHost { localModelEndpoint.startIfEnabled() }
         self.settingsCoordinator = settingsCoordinator
         self.activationIndicatorController = activationIndicatorController
         self.vehicleSearchOverlayController = vehicleSearchOverlayController

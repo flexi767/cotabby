@@ -207,6 +207,36 @@ final class LlamaRuntimeManager: ObservableObject {
         }
     }
 
+    /// One chat answer from the loaded model, for the local endpoint that lets other apps (VoiceInk,
+    /// Handy) use Cotabby's model instead of loading their own. The prompt comes from the model's
+    /// own chat template and the answer runs to the model's end of turn.
+    ///
+    /// It shares the single llama runtime with autocomplete (one model in memory, the point of the
+    /// endpoint): the request waits behind any autocomplete decode, and since the engine keeps one
+    /// sequence it replaces the autocomplete cache, so the next suggestion decodes its prompt anew.
+    func generateChat(
+        messages: [LlamaChatMessage],
+        maxTokens: Int,
+        temperature: Double
+    ) async throws -> LlamaGenerationOutput {
+        _ = try await preparedRuntime()
+        let core = self.core
+        guard let prompt = await Task.detached(operation: { core.chatPrompt(messages: messages) }).value else {
+            throw LlamaRuntimeError.generationFailed("The loaded model has no chat template.")
+        }
+        let options = LlamaGenerationOptions(
+            maxPredictionTokens: maxTokens,
+            temperature: temperature,
+            topK: 40,
+            topP: 0.95,
+            minP: 0.05,
+            repetitionPenalty: 1.0,
+            stopsAtSentenceBoundary: false,
+            parsesSpecialTokens: true
+        )
+        return try await generate(prompt: prompt, options: options)
+    }
+
     /// Cancels any retained prepared runtime and releases backend resources.
     /// Shutdown runs on a detached thread so it does not block the main actor.
     func stop() {

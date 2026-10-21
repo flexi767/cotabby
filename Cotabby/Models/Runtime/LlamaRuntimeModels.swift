@@ -174,6 +174,14 @@ struct LlamaRuntimeConfiguration: Equatable, Sendable {
     )
 }
 
+/// One message of a chat request to the local model endpoint (`LocalModelEndpoint`): an OpenAI
+/// role ("system", "user", "assistant") and its text. The model's own chat template turns a list
+/// of these into a prompt (`LlamaRuntimeCore.chatPrompt`).
+struct LlamaChatMessage: Equatable, Sendable {
+    let role: String
+    let content: String
+}
+
 /// Sampling and length controls for one llama generation request.
 ///
 /// These values travel together from the suggestion layer to the runtime. Modeling them as one
@@ -220,6 +228,15 @@ struct LlamaGenerationOptions: Equatable, Sendable {
     /// be recorded next to what the writer did with the suggestion. That record is what a floor
     /// gets tuned from. Costs two O(vocab) passes per token, so it is on only while measuring.
     var measuresConfidence = false
+
+    /// Stop at the first natural sentence boundary (`DecodeStopPolicy`), as autocomplete wants. A
+    /// chat answer for the local endpoint runs to the model's own end of turn instead.
+    var stopsAtSentenceBoundary = true
+
+    /// Tokenize with control tokens parsed, so "<start_of_turn>" becomes its special id. Only for a
+    /// prompt Cotabby formatted itself with the model's chat template (`LlamaRuntimeCore.chatPrompt`);
+    /// autocomplete prompts carry raw user text, where such markers must stay plain text.
+    var parsesSpecialTokens = false
 
     /// Whether the engine must compute per-token log-probabilities for this generation.
     var computesLogprob: Bool { confidenceFloor > -.infinity || measuresConfidence }

@@ -185,6 +185,40 @@ nonisolated final class LlamaRuntimeCore: @unchecked Sendable {
         )
     }
 
+    /// The loaded model's own chat template (from its GGUF) applied to `messages`, ending with the
+    /// assistant turn opened; nil when no model is loaded or it has no usable template. Reads only
+    /// model metadata, but under the same lifecycle and lock as a generation, so a concurrent
+    /// shutdown or model switch cannot free the model mid-read.
+    func chatPrompt(messages: [LlamaChatMessage]) -> String? {
+        lifecycleCondition.lock()
+        guard !isShuttingDown else {
+            lifecycleCondition.unlock()
+            return nil
+        }
+        activeOperationCount += 1
+        lifecycleCondition.unlock()
+        defer {
+            lifecycleCondition.lock()
+            activeOperationCount -= 1
+            lifecycleCondition.broadcast()
+            lifecycleCondition.unlock()
+        }
+        autocompleteLock.lock()
+        defer { autocompleteLock.unlock() }
+        guard preparedRuntime != nil else { return nil }
+
+        var packed: [UInt8] = []
+        for message in messages {
+            packed.append(contentsOf: Array(message.role.utf8)); packed.append(0)
+            packed.append(contentsOf: Array(message.content.utf8)); packed.append(0)
+        }
+        let bytes = packed.withUnsafeBufferPointer { buffer in
+            Array(engine.applyChatTemplate(buffer.baseAddress, Int32(buffer.count)))
+        }
+        guard !bytes.isEmpty else { return nil }
+        return String(decoding: bytes, as: UTF8.self)
+    }
+
     /// Decodes `prompt` into the autocomplete KV cache without sampling, so the next `generate`
     /// whose prompt extends this one only pays for the typed delta. This is the llama half of
     /// prewarm-on-focus: a focus change destroys the previous field's sequence, and without a
@@ -286,7 +320,7 @@ nonisolated final class LlamaRuntimeCore: @unchecked Sendable {
         }
 
         let promptBytes = Array(prompt.utf8)
-        let allPromptTokens = tokenize(prompt)
+        let allPromptTokens = options.parsesSpecialTokens ? tokenizeParsingSpecial(prompt) : tokenize(prompt)
         guard !allPromptTokens.isEmpty else {
             CotabbyLogger.runtime.error(
                 "Tokenization returned no prompt tokens",
@@ -307,7 +341,9 @@ nonisolated final class LlamaRuntimeCore: @unchecked Sendable {
         // Reconsider the entire bounded word fragment, not just its last vocabulary token.
         // The pure plan protects byte identity; native sampling enforces the resulting prefix.
         // A caret inside a word keeps the unhealed prompt so the whitespace mask stays in force.
-        let healing = options.forceWordContinuation
+        // A chat prompt ends in the template's open assistant turn, not in a word the writer is
+        // typing, so it is never healed.
+        let healing = options.forceWordContinuation || options.parsesSpecialTokens
             ? TokenHealingPlan.unhealed(tokens: allPromptTokens)
             : TokenHealingPlan(
                 prompt: prompt, tokens: allPromptTokens, singleLine: options.singleLine,
@@ -412,7 +448,7 @@ nonisolated final class LlamaRuntimeCore: @unchecked Sendable {
             // abbreviations, and list markers, so it will not truncate "e.g." or "3.14"
             // mid-thought; the marker stop produces identical visible text because the
             // normalizer truncates at the first marker anyway.
-            if let earlyStop = DecodeStopPolicy.verdict(
+            if options.stopsAtSentenceBoundary, let earlyStop = DecodeStopPolicy.verdict(
                 accumulated: generatedText,
                 tokensGenerated: tokensGenerated,
                 minimumTokens: options.sentenceStopMinimumTokens,
@@ -734,6 +770,12 @@ nonisolated final class LlamaRuntimeCore: @unchecked Sendable {
         guard utf8Count > 0 else { return [] }
         let vec = engine.tokenize(text, Int32(utf8Count))
         return Array(vec)
+    }
+
+    private func tokenizeParsingSpecial(_ text: String) -> [Int32] {
+        let utf8Count = text.utf8.count
+        guard utf8Count > 0 else { return [] }
+        return Array(engine.tokenizeParsingSpecial(text, Int32(utf8Count)))
     }
 
     private func setCompletionPrefix(_ bytes: [UInt8], sequenceID: Int32) {
