@@ -153,6 +153,29 @@ nonisolated enum LocalEndpointProtocol {
             }
         }
 
+        /// Whether the GGUF's own `general.*` metadata names an instruction-tuned model, which
+        /// is the only kind this fallback may serve. A template-less Gemma GGUF is in practice a
+        /// *base* (pretrained) conversion: every published Gemma 3/4 instruction quant checked
+        /// (ggml-org, unsloth, bartowski, lmstudio-community, mradermacher) embeds its template,
+        /// and the template-less ones are `gemma-4-E2B`/`gemma-4-E4B`/`gemma-3-4b-pt`. A base model
+        /// given chat turns answers with unrelated text, and a client that falls back to its own
+        /// input on an error (VoiceInk keeps the raw dictation) would replace good text with it.
+        ///
+        /// So the rule fails closed: only an explicit instruction tag passes. llama.cpp's converter
+        /// derives `general.finetune` and `general.name` from the Hugging Face repo name
+        /// ("gemma-3-4b-it" -> finetune "it", name "... It"), and `general.source.url` names the
+        /// original repo, so an instruction tune says "it", "instruct" or "chat" as a whole word in
+        /// one of them. `general.url` is ignored: it names the quantizer's repo, not the model.
+        static func isInstructionTuned(_ metadata: [String: String]) -> Bool {
+            let sourceRepo = metadata["general.source.url"].flatMap { URL(string: $0)?.lastPathComponent }
+            let fields = [metadata["general.finetune"], metadata["general.name"], sourceRepo]
+            return fields.compactMap { $0 }.contains { field in
+                field.lowercased()
+                    .split { !$0.isLetter && !$0.isNumber }
+                    .contains { ["it", "instruct", "chat"].contains($0) }
+            }
+        }
+
         /// `messages` as a prompt in this format, ending with the model's turn opened.
         func prompt(for messages: [LlamaChatMessage]) -> String {
             let (open, close) = turnMarkers
@@ -178,6 +201,95 @@ nonisolated enum LocalEndpointProtocol {
                 prompt += "\(open)\(role)\n\(text)\(close)\n"
             }
             return prompt + "\(open)model\n"
+        }
+    }
+
+    /// The chat prompt for the loaded model: its own template's rendering when llama.cpp produced
+    /// one (whatever the metadata says, as before the fallback existed), else the fallback format
+    /// for an instruction-tuned model, else nil so the endpoint fails before generating.
+    static func chatPrompt(
+        templated: String?,
+        fallbackFormat: FallbackChatFormat?,
+        metadata: [String: String],
+        messages: [LlamaChatMessage]
+    ) -> String? {
+        if let templated, !templated.isEmpty { return templated }
+        guard let fallbackFormat, FallbackChatFormat.isInstructionTuned(metadata) else { return nil }
+        return fallbackFormat.prompt(for: messages)
+    }
+
+    /// The string-valued `general.*` keys of a GGUF file's header (`general.name`,
+    /// `general.finetune`, `general.source.url`, ...), or nil when `data` is not a GGUF v2/v3
+    /// header. Other keys are skipped without decoding, including the tokenizer's arrays of
+    /// hundreds of thousands of strings, which may come before `general.source.url`. Pass the file
+    /// memory-mapped: only the header's pages are touched, never the tensor data.
+    ///
+    /// Layout (ggml's gguf.h): "GGUF", u32 version, u64 tensor count, u64 key count, then per key a
+    /// string name, a u32 value type and the value; strings are a u64 byte length and UTF-8 bytes.
+    static func ggufGeneralStrings(_ data: Data) -> [String: String]? {
+        data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) -> [String: String]? in
+            var offset = 0
+            func integer<T: FixedWidthInteger>(_: T.Type) -> T? {
+                guard offset + MemoryLayout<T>.size <= raw.count else { return nil }
+                defer { offset += MemoryLayout<T>.size }
+                return T(littleEndian: raw.loadUnaligned(fromByteOffset: offset, as: T.self))
+            }
+            func string() -> String? {
+                guard let length = integer(UInt64.self), length <= UInt64(raw.count - offset) else { return nil }
+                defer { offset += Int(length) }
+                return String(decoding: raw[offset ..< offset + Int(length)], as: UTF8.self)
+            }
+            // Byte size of one fixed-width value type; nil for string (8), array (9) or unknown.
+            func fixedSize(_ type: UInt32) -> Int? {
+                switch type {
+                case 0, 1, 7: 1
+                case 2, 3: 2
+                case 4, 5, 6: 4
+                case 10, 11, 12: 8
+                default: nil
+                }
+            }
+            func skipValue(_ type: UInt32) -> Bool {
+                if let size = fixedSize(type) {
+                    guard offset + size <= raw.count else { return false }
+                    offset += size
+                    return true
+                }
+                switch type {
+                case 8:
+                    return string() != nil
+                case 9:
+                    guard let elementType = integer(UInt32.self), let count = integer(UInt64.self) else { return false }
+                    if let size = fixedSize(elementType) {
+                        guard count <= UInt64(raw.count - offset) / UInt64(size) else { return false }
+                        offset += Int(count) * size
+                        return true
+                    }
+                    guard count <= UInt64(raw.count - offset) else { return false }
+                    for _ in 0 ..< count where !skipValue(elementType) { return false }
+                    return true
+                default:
+                    return false
+                }
+            }
+
+            guard raw.count >= 4, raw.prefix(4).elementsEqual("GGUF".utf8) else { return nil }
+            offset = 4
+            // Version 1 used 32-bit lengths; llama.cpp writes v3 and reads only v2 and later.
+            guard let version = integer(UInt32.self), version >= 2,
+                  integer(UInt64.self) != nil, // tensor count
+                  let keyCount = integer(UInt64.self) else { return nil }
+            var result: [String: String] = [:]
+            for _ in 0 ..< keyCount {
+                guard let key = string(), let type = integer(UInt32.self) else { return nil }
+                if type == 8, key.hasPrefix("general.") {
+                    guard let value = string() else { return nil }
+                    result[key] = value
+                } else if !skipValue(type) {
+                    return nil
+                }
+            }
+            return result
         }
     }
 

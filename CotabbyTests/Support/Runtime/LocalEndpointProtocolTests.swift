@@ -86,6 +86,88 @@ final class LocalEndpointProtocolTests: XCTestCase {
                        "<|turn>user\nhi maya comma quick update<turn|>\n<|turn>model\n")
     }
 
+    /// `general.*` of the GGUF that made VoiceInk replace dictation with unrelated text: the base
+    /// `google/gemma-4-E4B` re-quantized by mradermacher, with no chat template.
+    private let gemma4BaseMetadata = [
+        "general.architecture": "gemma4", "general.type": "model", "general.name": "Gemma 4 E4B",
+        "general.size_label": "7.5B", "general.license": "apache-2.0",
+        "general.url": "https://huggingface.co/mradermacher/gemma-4-E4B-i1-GGUF",
+        "general.source.url": "https://huggingface.co/google/gemma-4-E4B",
+    ]
+    private let voiceInkMessages = [LlamaChatMessage(role: "system", content: "Clean up."),
+                                    LlamaChatMessage(role: "user", content: "hi maya")]
+
+    func testBaseModelWithoutTemplateFailsBeforeGeneration() {
+        XCTAssertFalse(LocalEndpointProtocol.FallbackChatFormat.isInstructionTuned(gemma4BaseMetadata))
+        XCTAssertNil(LocalEndpointProtocol.chatPrompt(templated: nil, fallbackFormat: .gemma4,
+                                                      metadata: gemma4BaseMetadata, messages: voiceInkMessages))
+        // Gemma 3's base conversion names itself "pt"; an unreadable header gives no metadata.
+        let gemma3Base = ["general.name": "Gemma 3 4b Pt", "general.finetune": "pt",
+                          "general.source.url": "https://huggingface.co/google/gemma-3-4b-pt"]
+        XCTAssertNil(LocalEndpointProtocol.chatPrompt(templated: nil, fallbackFormat: .gemma,
+                                                      metadata: gemma3Base, messages: voiceInkMessages))
+        XCTAssertNil(LocalEndpointProtocol.chatPrompt(templated: nil, fallbackFormat: .gemma4,
+                                                      metadata: [:], messages: voiceInkMessages))
+        // "it" counts only as a whole word, not inside another one.
+        XCTAssertFalse(LocalEndpointProtocol.FallbackChatFormat.isInstructionTuned(
+            ["general.name": "Gemma 4 E4B Italian Edit"]))
+    }
+
+    func testTemplateLessInstructionTuneGetsTheFallbackFormat() {
+        let instructionMetadata: [[String: String]] = [
+            ["general.name": "Gemma 4 E4B It", "general.finetune": "it",
+             "general.source.url": "https://huggingface.co/google/gemma-4-E4B-it"],
+            ["general.name": "BgGPT Gemma 3 4B IT", "general.finetune": "IT"],
+            ["general.source.url": "https://huggingface.co/google/gemma-4-E2B-it"],
+            ["general.name": "Some Gemma", "general.finetune": "Instruct"],
+        ]
+        for metadata in instructionMetadata {
+            XCTAssertEqual(LocalEndpointProtocol.chatPrompt(templated: nil, fallbackFormat: .gemma4,
+                                                            metadata: metadata, messages: voiceInkMessages),
+                           LocalEndpointProtocol.FallbackChatFormat.gemma4.prompt(for: voiceInkMessages),
+                           "\(metadata)")
+        }
+        // An instruction tune whose vocabulary matches no known turn format still fails.
+        XCTAssertNil(LocalEndpointProtocol.chatPrompt(templated: nil, fallbackFormat: nil,
+                                                      metadata: instructionMetadata[0], messages: voiceInkMessages))
+    }
+
+    /// A model with its own template is served exactly as before the fallback existed, whatever
+    /// its metadata says (Qwen3.5 "Base" ships a template, BgGPT IT ships one).
+    func testTemplatedModelsKeepTheirOwnTemplate() {
+        for metadata in [gemma4BaseMetadata, ["general.finetune": "Base"], ["general.finetune": "IT"], [:]] {
+            XCTAssertEqual(LocalEndpointProtocol.chatPrompt(templated: "<rendered>", fallbackFormat: .gemma4,
+                                                            metadata: metadata, messages: voiceInkMessages),
+                           "<rendered>")
+        }
+    }
+
+    /// A GGUF header in ggml's layout, with the tokenizer's arrays before `general.source.url` as
+    /// in the real Gemma 4 file, so the reader must skip string and numeric arrays to reach it.
+    func testReadsGeneralStringsFromAGGUFHeader() {
+        var header = Data("GGUF".utf8)
+        func u32(_ value: UInt32) { withUnsafeBytes(of: value.littleEndian) { header.append(contentsOf: $0) } }
+        func u64(_ value: UInt64) { withUnsafeBytes(of: value.littleEndian) { header.append(contentsOf: $0) } }
+        func string(_ value: String) { u64(UInt64(value.utf8.count)); header.append(contentsOf: value.utf8) }
+        u32(3); u64(0); u64(6)
+        string("general.architecture"); u32(8); string("gemma4")
+        string("general.name"); u32(8); string("Gemma 4 E4B")
+        string("tokenizer.ggml.tokens"); u32(9); u32(8); u64(3); string("<pad>"); string("<eos>"); string("<turn|>")
+        string("tokenizer.ggml.token_type"); u32(9); u32(5); u64(3); u32(3); u32(3); u32(3)
+        string("general.quantization_version"); u32(4); u32(2)
+        string("general.source.url"); u32(8); string("https://huggingface.co/google/gemma-4-E4B")
+        let complete = header
+        XCTAssertEqual(LocalEndpointProtocol.ggufGeneralStrings(complete), [
+            "general.architecture": "gemma4", "general.name": "Gemma 4 E4B",
+            "general.source.url": "https://huggingface.co/google/gemma-4-E4B",
+        ])
+        XCTAssertNil(LocalEndpointProtocol.ggufGeneralStrings(complete.dropLast(5)), "truncated header")
+        XCTAssertNil(LocalEndpointProtocol.ggufGeneralStrings(Data("GGML".utf8) + complete.dropFirst(4)))
+        var version1 = complete
+        version1.replaceSubrange(4 ..< 8, with: [1, 0, 0, 0])
+        XCTAssertNil(LocalEndpointProtocol.ggufGeneralStrings(version1), "v1 used 32-bit lengths")
+    }
+
     func testRefusesRequestsWithoutAUserMessage() {
         XCTAssertThrowsError(try LocalEndpointProtocol.decodeChat(Data("not json".utf8)))
         XCTAssertThrowsError(try LocalEndpointProtocol.decodeChat(Data(#"{"messages":[{"role":"system","content":"x"}]}"#.utf8)))

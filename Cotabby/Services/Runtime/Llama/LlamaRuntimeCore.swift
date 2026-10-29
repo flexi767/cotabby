@@ -26,6 +26,7 @@ struct PreparedLlamaRuntime: Sendable {
 nonisolated final class LlamaRuntimeCore: @unchecked Sendable {
     private var engine = CotabbyInferenceEngine()
     private var preparedRuntime: PreparedLlamaRuntime?
+    private var cachedGGUFMetadata: (url: URL, values: [String: String])?
 
     private let autocompleteLock = NSLock()
     private var autocompleteSequenceID: Int32 = -1
@@ -187,9 +188,9 @@ nonisolated final class LlamaRuntimeCore: @unchecked Sendable {
 
     /// The loaded model's own chat template (from its GGUF) applied to `messages`, ending with the
     /// assistant turn opened. A model without a usable template gets the turn format its vocabulary
-    /// was trained on (`LocalEndpointProtocol.FallbackChatFormat`); nil when no model is loaded or
-    /// no known format fits. Reads only
-    /// model metadata, but under the same lifecycle and lock as a generation, so a concurrent
+    /// was trained on (`LocalEndpointProtocol.FallbackChatFormat`), but only when its GGUF metadata
+    /// names an instruction tune; nil when no model is loaded, the model is a base model, or no
+    /// known format fits, so the endpoint fails before generating. Reads only model metadata, but under the same lifecycle and lock as a generation, so a concurrent
     /// shutdown or model switch cannot free the model mid-read.
     func chatPrompt(messages: [LlamaChatMessage]) -> String? {
         lifecycleCondition.lock()
@@ -207,7 +208,7 @@ nonisolated final class LlamaRuntimeCore: @unchecked Sendable {
         }
         autocompleteLock.lock()
         defer { autocompleteLock.unlock() }
-        guard preparedRuntime != nil else { return nil }
+        guard let preparedRuntime else { return nil }
 
         var packed: [UInt8] = []
         for message in messages {
@@ -220,7 +221,25 @@ nonisolated final class LlamaRuntimeCore: @unchecked Sendable {
         if !bytes.isEmpty {
             return String(decoding: bytes, as: UTF8.self)
         }
-        return fallbackChatFormat()?.prompt(for: messages)
+        guard let format = fallbackChatFormat() else { return nil }
+        return LocalEndpointProtocol.chatPrompt(
+            templated: nil,
+            fallbackFormat: format,
+            metadata: ggufGeneralMetadata(preparedRuntime.resolvedRuntime.modelFileURL),
+            messages: messages
+        )
+    }
+
+    /// The loaded GGUF's `general.*` strings, read once per model file. The file is memory-mapped,
+    /// so only the header's pages are read (about 10 MB for Gemma's vocabulary arrays), never the
+    /// weights. An unreadable header yields no metadata, which the fallback treats as a base model.
+    /// Caller holds the autocomplete lock, which also guards the cache.
+    private func ggufGeneralMetadata(_ url: URL) -> [String: String] {
+        if let cachedGGUFMetadata, cachedGGUFMetadata.url == url { return cachedGGUFMetadata.values }
+        let data = try? Data(contentsOf: url, options: .alwaysMapped)
+        let values = data.flatMap(LocalEndpointProtocol.ggufGeneralStrings) ?? [:]
+        cachedGGUFMetadata = (url, values)
+        return values
     }
 
     /// The first known turn format whose markers are each one control token in the loaded
