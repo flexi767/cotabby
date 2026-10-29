@@ -122,10 +122,63 @@ nonisolated enum LocalEndpointProtocol {
     private static let templateMarkers = [
         "<start_of_turn>", "<end_of_turn>", "<|im_start|>", "<|im_end|>", "<|eot_id|>",
         "<|start_header_id|>", "<|end_header_id|>", "<bos>", "<eos>",
+        "<|turn>", "<turn|>", "<|channel>", "<channel|>", "<|think|>",
     ]
 
     static func withoutTemplateMarkers(_ text: String) -> String {
         templateMarkers.reduce(text) { $0.replacingOccurrences(of: $1, with: "") }
+    }
+
+    /// A chat turn format written out by Cotabby for a model whose GGUF carries no
+    /// `tokenizer.chat_template` (base and many imatrix re-quants of Gemma ship without one), so
+    /// llama.cpp has nothing to apply. The runtime recognizes the format from the vocabulary: a
+    /// model whose turn markers are single control tokens was trained on that turn format.
+    ///
+    /// Neither format writes `<bos>`: llama.cpp adds it while tokenizing (for Gemma 4 it forces
+    /// `add_bos` on even when the GGUF says false). The answer stops at the closing marker because
+    /// llama.cpp counts `<end_of_turn>` and `<turn|>` as end-of-generation tokens.
+    enum FallbackChatFormat: CaseIterable {
+        /// Gemma 4 (Google's `chat_template.jinja` for gemma-4-*-it): a leading system message gets
+        /// its own `<|turn>system` turn; every turn is `<|turn>{role}\n{text}<turn|>\n`.
+        case gemma4
+        /// Gemma 2 and 3: no system turn, so a leading system message opens the first user turn,
+        /// separated by a blank line (Google's Gemma 3 template and llama.cpp's built-in "gemma").
+        case gemma
+
+        /// The opening and closing turn markers; both must be single tokens in the vocabulary.
+        var turnMarkers: (open: String, close: String) {
+            switch self {
+            case .gemma4: ("<|turn>", "<turn|>")
+            case .gemma: ("<start_of_turn>", "<end_of_turn>")
+            }
+        }
+
+        /// `messages` as a prompt in this format, ending with the model's turn opened.
+        func prompt(for messages: [LlamaChatMessage]) -> String {
+            let (open, close) = turnMarkers
+            var remaining = messages[...]
+            var prompt = ""
+            var firstUserPrefix = ""
+            if let first = remaining.first, first.role == "system" {
+                remaining = remaining.dropFirst()
+                let system = first.content.trimmingCharacters(in: .whitespacesAndNewlines)
+                switch self {
+                case .gemma4: prompt += "\(open)system\n\(system)\(close)\n"
+                case .gemma: firstUserPrefix = system.isEmpty ? "" : system + "\n\n"
+                }
+            }
+            for message in remaining {
+                // Both templates call the assistant "model"; Gemma 4 passes other roles through.
+                let role = message.role == "assistant" ? "model" : message.role
+                var text = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+                if role == "user", !firstUserPrefix.isEmpty {
+                    text = firstUserPrefix + text
+                    firstUserPrefix = ""
+                }
+                prompt += "\(open)\(role)\n\(text)\(close)\n"
+            }
+            return prompt + "\(open)model\n"
+        }
     }
 
     /// The answer as clients expect it: no surrounding whitespace, no stray turn marker.

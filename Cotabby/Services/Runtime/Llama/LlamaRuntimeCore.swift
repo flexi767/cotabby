@@ -186,7 +186,9 @@ nonisolated final class LlamaRuntimeCore: @unchecked Sendable {
     }
 
     /// The loaded model's own chat template (from its GGUF) applied to `messages`, ending with the
-    /// assistant turn opened; nil when no model is loaded or it has no usable template. Reads only
+    /// assistant turn opened. A model without a usable template gets the turn format its vocabulary
+    /// was trained on (`LocalEndpointProtocol.FallbackChatFormat`); nil when no model is loaded or
+    /// no known format fits. Reads only
     /// model metadata, but under the same lifecycle and lock as a generation, so a concurrent
     /// shutdown or model switch cannot free the model mid-read.
     func chatPrompt(messages: [LlamaChatMessage]) -> String? {
@@ -215,8 +217,22 @@ nonisolated final class LlamaRuntimeCore: @unchecked Sendable {
         let bytes = packed.withUnsafeBufferPointer { buffer in
             Array(engine.applyChatTemplate(buffer.baseAddress, Int32(buffer.count)))
         }
-        guard !bytes.isEmpty else { return nil }
-        return String(decoding: bytes, as: UTF8.self)
+        if !bytes.isEmpty {
+            return String(decoding: bytes, as: UTF8.self)
+        }
+        return fallbackChatFormat()?.prompt(for: messages)
+    }
+
+    /// The first known turn format whose markers are each one control token in the loaded
+    /// vocabulary. A marker the model never saw tokenizes into several plain pieces either way;
+    /// one it was trained on collapses to fewer tokens when control tokens are parsed. Comparing
+    /// the two counts (rather than expecting exactly one) keeps the probe independent of whether
+    /// the tokenizer prepends BOS. Caller holds the autocomplete lock with a model loaded.
+    private func fallbackChatFormat() -> LocalEndpointProtocol.FallbackChatFormat? {
+        LocalEndpointProtocol.FallbackChatFormat.allCases.first { format in
+            let (open, close) = format.turnMarkers
+            return [open, close].allSatisfy { tokenizeParsingSpecial($0).count < tokenize($0).count }
+        }
     }
 
     /// Decodes `prompt` into the autocomplete KV cache without sampling, so the next `generate`

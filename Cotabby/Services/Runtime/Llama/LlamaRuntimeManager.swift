@@ -209,7 +209,8 @@ final class LlamaRuntimeManager: ObservableObject {
 
     /// One chat answer from the loaded model, for the local endpoint that lets other apps (VoiceInk,
     /// Handy) use Cotabby's model instead of loading their own. The prompt comes from the model's
-    /// own chat template and the answer runs to the model's end of turn.
+    /// own chat template, or a known turn format when the GGUF has none, and the answer runs to the
+    /// model's end of turn.
     ///
     /// It shares the single llama runtime with autocomplete (one model in memory, the point of the
     /// endpoint): the request waits behind any autocomplete decode, and since the engine keeps one
@@ -222,7 +223,7 @@ final class LlamaRuntimeManager: ObservableObject {
         _ = try await preparedRuntime()
         let core = self.core
         guard let prompt = await Task.detached(operation: { core.chatPrompt(messages: messages) }).value else {
-            throw LlamaRuntimeError.generationFailed("The loaded model has no chat template.")
+            throw LlamaRuntimeError.generationFailed("The loaded model has no chat template and no known turn format.")
         }
         let options = LlamaGenerationOptions(
             maxPredictionTokens: maxTokens,
