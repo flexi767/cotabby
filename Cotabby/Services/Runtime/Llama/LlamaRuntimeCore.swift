@@ -192,11 +192,12 @@ nonisolated final class LlamaRuntimeCore: @unchecked Sendable {
     /// names an instruction tune; nil when no model is loaded, the model is a base model, or no
     /// known format fits, so the endpoint fails before generating. Reads only model metadata, but under the same lifecycle and lock as a generation, so a concurrent
     /// shutdown or model switch cannot free the model mid-read.
-    func chatPrompt(messages: [LlamaChatMessage]) -> String? {
+    /// The failure carries the reason a client is shown (`unavailableChatPromptReason`).
+    func chatPrompt(messages: [LlamaChatMessage]) -> Result<String, LlamaRuntimeError> {
         lifecycleCondition.lock()
         guard !isShuttingDown else {
             lifecycleCondition.unlock()
-            return nil
+            return .failure(.unavailable("The model is unloading."))
         }
         activeOperationCount += 1
         lifecycleCondition.unlock()
@@ -208,7 +209,7 @@ nonisolated final class LlamaRuntimeCore: @unchecked Sendable {
         }
         autocompleteLock.lock()
         defer { autocompleteLock.unlock() }
-        guard let preparedRuntime else { return nil }
+        guard let preparedRuntime else { return .failure(.unavailable("No model is loaded.")) }
 
         var packed: [UInt8] = []
         for message in messages {
@@ -219,15 +220,16 @@ nonisolated final class LlamaRuntimeCore: @unchecked Sendable {
             Array(engine.applyChatTemplate(buffer.baseAddress, Int32(buffer.count)))
         }
         if !bytes.isEmpty {
-            return String(decoding: bytes, as: UTF8.self)
+            return .success(String(decoding: bytes, as: UTF8.self))
         }
-        guard let format = fallbackChatFormat() else { return nil }
-        return LocalEndpointProtocol.chatPrompt(
-            templated: nil,
-            fallbackFormat: format,
-            metadata: ggufGeneralMetadata(preparedRuntime.resolvedRuntime.modelFileURL),
-            messages: messages
-        )
+        let format = fallbackChatFormat()
+        let metadata = ggufGeneralMetadata(preparedRuntime.resolvedRuntime.modelFileURL)
+        if let prompt = LocalEndpointProtocol.chatPrompt(templated: nil, fallbackFormat: format, metadata: metadata, messages: messages) {
+            return .success(prompt)
+        }
+        return .failure(.generationFailed(
+            LocalEndpointProtocol.unavailableChatPromptReason(fallbackFormat: format, metadata: metadata)
+        ))
     }
 
     /// The loaded GGUF's `general.*` strings, read once per model file. The file is memory-mapped,

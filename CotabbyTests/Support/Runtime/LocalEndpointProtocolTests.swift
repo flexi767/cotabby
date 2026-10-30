@@ -113,6 +113,16 @@ final class LocalEndpointProtocolTests: XCTestCase {
             ["general.name": "Gemma 4 E4B Italian Edit"]))
     }
 
+    /// The endpoint's error names a base model as one, so the user picks another model rather
+    /// than looking for a template; a model with no known turn format at all is told apart.
+    func testRefusalSaysWhyTheModelGetsNoPrompt() {
+        let base = LocalEndpointProtocol.unavailableChatPromptReason(fallbackFormat: .gemma4, metadata: gemma4BaseMetadata)
+        XCTAssertTrue(base.contains("(Gemma 4 E4B) is a base model"), base)
+        XCTAssertTrue(base.contains("instruction-tuned"), base)
+        let unknown = LocalEndpointProtocol.unavailableChatPromptReason(fallbackFormat: nil, metadata: [:])
+        XCTAssertEqual(unknown, "The loaded model has no chat template. Select a chat or instruction-tuned model for the local endpoint.")
+    }
+
     func testTemplateLessInstructionTuneGetsTheFallbackFormat() {
         let instructionMetadata: [[String: String]] = [
             ["general.name": "Gemma 4 E4B It", "general.finetune": "it",

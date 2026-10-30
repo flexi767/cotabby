@@ -218,6 +218,21 @@ nonisolated enum LocalEndpointProtocol {
         return fallbackFormat.prompt(for: messages)
     }
 
+    /// Why the loaded model gets no chat prompt, for the endpoint's error: the client shows it
+    /// (VoiceInk keeps the raw dictation and reports the failure), and "no chat template" alone
+    /// sent the user looking for a template when the model was a base model, which no template
+    /// makes answer a request.
+    static func unavailableChatPromptReason(fallbackFormat: FallbackChatFormat?, metadata: [String: String]) -> String {
+        let name = metadata["general.name"].map { " (\($0))" } ?? ""
+        if fallbackFormat != nil, !FallbackChatFormat.isInstructionTuned(metadata) {
+            return "The loaded model\(name) is a base model with no chat template, so it continues text "
+                + "instead of answering requests. Select an instruction-tuned model (\"-it\" or \"Instruct\") "
+                + "for the local endpoint."
+        }
+        return "The loaded model\(name) has no chat template. Select a chat or instruction-tuned model "
+            + "for the local endpoint."
+    }
+
     /// The string-valued `general.*` keys of a GGUF file's header (`general.name`,
     /// `general.finetune`, `general.source.url`, ...), or nil when `data` is not a GGUF v2/v3
     /// header. Other keys are skipped without decoding, including the tokenizer's arrays of

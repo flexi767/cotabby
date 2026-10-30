@@ -223,9 +223,8 @@ final class LlamaRuntimeManager: ObservableObject {
     ) async throws -> LlamaGenerationOutput {
         _ = try await preparedRuntime()
         let core = self.core
-        guard let prompt = await Task.detached(operation: { core.chatPrompt(messages: messages) }).value else {
-            throw LlamaRuntimeError.generationFailed("The loaded model has no chat template.")
-        }
+        // `get()` rethrows the core's failure, whose message says why there is no prompt.
+        let prompt = try await Task.detached(operation: { core.chatPrompt(messages: messages) }).value.get()
         let options = LlamaGenerationOptions(
             maxPredictionTokens: maxTokens,
             temperature: temperature,
